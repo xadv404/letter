@@ -11,7 +11,6 @@ import (
 
 	"github.com/xadv404/letter/internal/config"
 	"github.com/xadv404/letter/internal/crawler"
-	"github.com/xadv404/letter/internal/license"
 	"github.com/xadv404/letter/internal/ui"
 )
 
@@ -36,7 +35,6 @@ func runCLI() {
 	output := flag.String("output", cfg.OutputDir, "Output directory")
 	minScore := flag.Int("min-param-score", cfg.MinParamScore, "Minimum parameter score (50-100)")
 	previewOnly := flag.Bool("preview-dorks", false, "Preview dork generation without crawling")
-	skipLicense := flag.Bool("skip-license", true, "Skip license validation (dev mode)")
 
 	flag.Parse()
 
@@ -67,14 +65,6 @@ func runCLI() {
 
 	if err := cfg.Validate(); err != nil {
 		exitErr("%v", err)
-	}
-
-	if !*skipLicense {
-		v := license.New("dev-secret-change-me")
-		status, err := v.Cached()
-		if err != nil || status != license.Active {
-			exitErr("license invalid: %v (HWID=%s)", err, license.HWID())
-		}
 	}
 
 	if *previewOnly {
