@@ -1,6 +1,9 @@
 package dorks
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFingerprintViable(t *testing.T) {
 	fp := NewFingerprint()
@@ -24,8 +27,33 @@ func TestGenerateFingerprintVolume(t *testing.T) {
 
 	g := New()
 	out := g.GenerateFingerprint(*fp)
-	if len(out) < 80 {
-		t.Fatalf("expected 80+ dorks for theme clone hunting, got %d", len(out))
+	if len(out) < 300 {
+		t.Fatalf("expected 300+ injectable volume dorks, got %d", len(out))
+	}
+	paramOnly := 0
+	for _, d := range out {
+		if strings.HasPrefix(d, "inurl:id=") || strings.HasPrefix(d, "inurl:cat=") {
+			paramOnly++
+		}
+	}
+	if paramOnly < 20 {
+		t.Fatalf("expected many param-only dorks, got %d", paramOnly)
+	}
+}
+
+func TestGenerateFingerprintExpandedVolume(t *testing.T) {
+	fp := NewFingerprint()
+	for _, p := range ExpandInjectableParams([]string{"product_id", "cat", "search_term"}) {
+		fp.AddParameter(p)
+	}
+	fp.AddPath("catalog")
+	fp.AddPath("product")
+	fp.Finalize()
+
+	g := New()
+	out := g.GenerateFingerprint(*fp)
+	if len(out) < 3000 {
+		t.Fatalf("expected 3000+ dorks with expanded injectable params, got %d", len(out))
 	}
 }
 

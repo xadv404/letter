@@ -137,6 +137,22 @@ func TestFlaggedURL(t *testing.T) {
 	}
 }
 
+func TestTopInjectableParamsIncludesCat(t *testing.T) {
+	s := New(1000, t.TempDir())
+	s.ScoreURL("shop.com", "https://shop.com/products?category=electronics&id=42", 65)
+	inj := s.TopInjectableParams("shop.com", 20)
+	names := map[string]bool{}
+	for _, r := range inj {
+		names[r.Name] = true
+	}
+	if !names["id"] {
+		t.Fatal("expected id in injectable params")
+	}
+	if !names["category"] {
+		t.Fatal("expected category in injectable params (stored even if LOW)")
+	}
+}
+
 func TestDeduplicationPerDomain(t *testing.T) {
 	s := New(1000, t.TempDir())
 	r1 := s.ScoreURL("example.com", "https://example.com/a?id=1", 65)

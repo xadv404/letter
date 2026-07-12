@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	maxKeywords   = 60
-	maxPhrases    = 30
-	maxParameters = 55
-	maxPaths      = 35
+	maxKeywords   = 80
+	maxPhrases    = 40
+	maxParameters = 120
+	maxPaths      = 80
 )
 
 // Fingerprint holds crawl-derived signals used to find unknown clone sites.
@@ -115,7 +115,7 @@ func (f *Fingerprint) Finalize() {
 }
 
 func (f *Fingerprint) Viable() bool {
-	return len(f.Parameters) > 0 && (len(f.Keywords) > 0 || len(f.Phrases) > 0 || len(f.Paths) > 0)
+	return len(f.Parameters) > 0
 }
 
 func normalizeTerm(s string) string {

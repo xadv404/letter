@@ -20,7 +20,7 @@ func ExpandAutocomplete(terms []string, limitPerTerm int) []string {
 	seen := map[string]struct{}{}
 	var out []string
 	for i, term := range terms {
-		if i >= 12 {
+		if i >= 30 {
 			break
 		}
 		term = strings.TrimSpace(term)

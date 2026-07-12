@@ -38,7 +38,9 @@ func SiteScope(raw string) (host, tld string) {
 	return host, tld
 }
 
-// GenerateFingerprint builds dorks from a theme fingerprint using all SQLi template families.
+const maxPrecisionKeywords = 30
+
+// GenerateFingerprint builds injectable-focused dorks: volume first, precision second.
 func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 	if !fp.Viable() {
 		return nil
@@ -56,15 +58,40 @@ func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 		out = append(out, dork)
 	}
 
-	for _, phrase := range fp.Phrases {
+	// Layer 1 — volume: param-only injectable surface (most Google results).
+	for _, pm := range fp.Parameters {
+		for _, d := range applyVolumeParam(pm) {
+			add(d)
+		}
+		for _, d := range applyParamSurface(pm) {
+			add(d)
+		}
+	}
+
+	// Layer 2 — volume: crawled paths × injectable params.
+	for _, path := range fp.Paths {
 		for _, pm := range fp.Parameters {
-			for _, d := range applyPhraseClone(phrase, pm) {
+			for _, d := range applyVolumePath(path, pm) {
+				add(d)
+			}
+			for _, d := range applyPathLayout(path, pm) {
 				add(d)
 			}
 		}
 	}
 
-	for _, kw := range fp.Keywords {
+	// Layer 3 — multi-param URLs (classic SQLi entry points).
+	for _, d := range applyMultiParam(fp.Parameters) {
+		add(d)
+	}
+
+	// Layer 4 — precision: theme keywords × params (clone hunting).
+	kwLimit := len(fp.Keywords)
+	if kwLimit > maxPrecisionKeywords {
+		kwLimit = maxPrecisionKeywords
+	}
+	for i := 0; i < kwLimit; i++ {
+		kw := fp.Keywords[i]
 		for _, pm := range fp.Parameters {
 			for _, d := range applyKeywordMatch(kw, pm) {
 				add(d)
@@ -75,25 +102,15 @@ func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 		}
 	}
 
-	for _, path := range fp.Paths {
+	phLimit := len(fp.Phrases)
+	if phLimit > 15 {
+		phLimit = 15
+	}
+	for i := 0; i < phLimit; i++ {
+		phrase := fp.Phrases[i]
 		for _, pm := range fp.Parameters {
-			for _, d := range applyPathLayout(path, pm) {
+			for _, d := range applyPhraseClone(phrase, pm) {
 				add(d)
-			}
-		}
-	}
-
-	for _, pm := range fp.Parameters {
-		for _, d := range applyParamSurface(pm) {
-			add(d)
-		}
-	}
-
-	if len(fp.Parameters) >= 2 {
-		for i := 0; i < len(fp.Parameters) && i < 12; i++ {
-			for j := i + 1; j < len(fp.Parameters) && j < i+4; j++ {
-				add(fmt.Sprintf(`inurl:%s= inurl:%s=`, fp.Parameters[i], fp.Parameters[j]))
-				add(fmt.Sprintf(`allinurl:%s %s`, fp.Parameters[i], fp.Parameters[j]))
 			}
 		}
 	}

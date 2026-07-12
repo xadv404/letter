@@ -25,7 +25,8 @@ func TemplateCount() int {
 		len(paramSurfaceTemplates()) +
 		len(sqliErrorTemplates()) +
 		len(sqliEndpointTemplates()) +
-		len(sqliDynamicTemplates())
+		len(sqliDynamicTemplates()) +
+		len(volumeParamTemplates())
 }
 
 func phraseCloneTemplates() []func(phrase, param string) string {

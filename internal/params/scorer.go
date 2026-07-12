@@ -109,17 +109,22 @@ func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 		accepted := score >= minScore
 		s.recordDecision(name, score, tier, cat, accepted, reason)
 
+		s.mu.Lock()
+		s.seen[key] = struct{}{}
+		if s.domainHits[domain] == nil {
+			s.domainHits[domain] = map[string]int{}
+		}
+		if prev, ok := s.domainHits[domain][name]; !ok || score > prev {
+			s.domainHits[domain][name] = score
+		}
+		s.mu.Unlock()
+
 		if !accepted {
 			continue
 		}
 
 		s.mu.Lock()
-		s.seen[key] = struct{}{}
 		s.count++
-		if s.domainHits[domain] == nil {
-			s.domainHits[domain] = map[string]int{}
-		}
-		s.domainHits[domain][name] = score
 		s.mu.Unlock()
 
 		if score > maxScore {
@@ -288,6 +293,72 @@ func (s *Scorer) TopForDomain(domain string, limit int) []Result {
 // TopForDorks returns HIGH + MEDIUM parameters (score ≥ minDorkScore).
 func (s *Scorer) TopForDorks(domain string, limit int) []Result {
 	return s.topForDomain(domain, limit, MinDorkScore)
+}
+
+// TopInjectableParams returns parameters suitable for SQLi dork volume generation.
+func (s *Scorer) TopInjectableParams(domain string, limit int) []Result {
+	s.mu.Lock()
+	hits := s.domainHits[domain]
+	s.mu.Unlock()
+	if len(hits) == 0 {
+		return nil
+	}
+
+	type kv struct {
+		name  string
+		score int
+	}
+	arr := make([]kv, 0, len(hits))
+	for name, score := range hits {
+		if injectableParam(name, score) {
+			arr = append(arr, kv{name, score})
+		}
+	}
+	for i := 0; i < len(arr); i++ {
+		for j := i + 1; j < len(arr); j++ {
+			if arr[j].score > arr[i].score {
+				arr[i], arr[j] = arr[j], arr[i]
+			}
+		}
+	}
+	if limit > 0 && len(arr) > limit {
+		arr = arr[:limit]
+	}
+	out := make([]Result, len(arr))
+	for i, item := range arr {
+		out[i] = Result{
+			Domain:   domain,
+			Name:     item.name,
+			Score:    item.score,
+			Tier:     scoreToTier(item.score),
+			Category: classifyParam(item.name, ""),
+		}
+	}
+	return out
+}
+
+func injectableParam(name string, score int) bool {
+	if score >= 65 {
+		return true
+	}
+	lower := strings.ToLower(name)
+	core := map[string]struct{}{
+		"id": {}, "pid": {}, "cid": {}, "nid": {}, "gid": {}, "tid": {}, "uid": {}, "sid": {},
+		"cat": {}, "catid": {}, "cat_id": {}, "category": {}, "category_id": {},
+		"product_id": {}, "item_id": {}, "article_id": {}, "page_id": {}, "user_id": {},
+		"search_term": {}, "filter_by": {}, "query": {}, "q": {}, "num": {}, "idx": {},
+	}
+	if _, ok := core[lower]; ok {
+		return true
+	}
+	if score >= 50 {
+		for _, suf := range []string{"_id", "_num", "_no", "_code"} {
+			if strings.HasSuffix(lower, suf) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Scorer) topForDomain(domain string, limit, minScore int) []Result {

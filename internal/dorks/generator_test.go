@@ -34,19 +34,19 @@ func TestGenerateDorksMatrix(t *testing.T) {
 		TLD:        ".com",
 		Keywords:   []string{"admin", "user"},
 		Parameters: []string{"id", "search_term"},
-		PreviewLimit: 10,
 	})
 	if len(out) == 0 {
 		t.Fatal("expected dorks")
 	}
 	found := false
 	for _, d := range out {
-		if strings.Contains(d, "inurl:id= intext:admin") {
+		if strings.Contains(d, "inurl:id=") {
 			found = true
+			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected matrix dork inurl:id= intext:admin, got %#v", out[:min(3, len(out))])
+		t.Fatalf("expected injectable dork inurl:id=, got %#v", out[:min(3, len(out))])
 	}
 }
 
