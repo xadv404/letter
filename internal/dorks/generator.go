@@ -38,7 +38,7 @@ func SiteScope(raw string) (host, tld string) {
 	return host, tld
 }
 
-// GenerateFingerprint builds dorks from a theme fingerprint using 50 templates × 6 families.
+// GenerateFingerprint builds dorks from a theme fingerprint using all SQLi template families.
 func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 	if !fp.Viable() {
 		return nil
@@ -67,6 +67,9 @@ func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 	for _, kw := range fp.Keywords {
 		for _, pm := range fp.Parameters {
 			for _, d := range applyKeywordMatch(kw, pm) {
+				add(d)
+			}
+			for _, d := range applySQLiDynamic(kw, pm) {
 				add(d)
 			}
 		}
@@ -126,7 +129,7 @@ func PreviewList(dorks []string, limit int) string {
 		dorks = dorks[:limit]
 	}
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Preview (%d dorks, %d templates × 6 families):\n", len(dorks), TemplateCount()))
+	b.WriteString(fmt.Sprintf("Preview (%d dorks, %d templates):\n", len(dorks), TemplateCount()))
 	for _, d := range dorks {
 		b.WriteString("  - ")
 		b.WriteString(d)

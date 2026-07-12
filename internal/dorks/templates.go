@@ -2,7 +2,7 @@ package dorks
 
 import "fmt"
 
-// Template families (50 patterns total) for SQLi clone discovery.
+// Template families for SQLi clone discovery.
 const (
 	FamilyPhraseClone  = "phrase_clone"
 	FamilyKeywordMatch = "keyword_match"
@@ -10,16 +10,22 @@ const (
 	FamilyPathContext  = "path_context"
 	FamilyPathLayout   = "path_layout"
 	FamilyParamSurface = "param_surface"
+	FamilySQLiError    = "sqli_error"
+	FamilySQLiEndpoint = "sqli_endpoint"
+	FamilySQLiDynamic  = "sqli_dynamic"
 )
 
-// TemplateCount is the number of base dork patterns (50 across 6 families).
+// TemplateCount is the number of base dork patterns across all families.
 func TemplateCount() int {
 	return len(phraseCloneTemplates()) +
 		len(keywordMatchTemplates()) +
 		len(filetypeTemplates()) +
 		len(pathContextTemplates()) +
 		len(pathLayoutTemplates()) +
-		len(paramSurfaceTemplates())
+		len(paramSurfaceTemplates()) +
+		len(sqliErrorTemplates()) +
+		len(sqliEndpointTemplates()) +
+		len(sqliDynamicTemplates())
 }
 
 func phraseCloneTemplates() []func(phrase, param string) string {
@@ -45,7 +51,6 @@ func keywordMatchTemplates() []func(keyword, param string) string {
 		func(kw, pm string) string { return fmt.Sprintf(`inurl:%s= "%s"`, pm, kw) },
 		func(kw, pm string) string { return fmt.Sprintf(`allinurl:%s %s`, pm, kw) },
 		func(kw, pm string) string { return fmt.Sprintf(`inurl:%s intext:%s`, pm, kw) },
-		func(kw, pm string) string { return fmt.Sprintf(`inurl:%s= | inurl:%s intext:%s`, pm, pm, kw) },
 		func(kw, pm string) string { return fmt.Sprintf(`"%s" inurl:%s=`, kw, pm) },
 	}
 }
@@ -99,6 +104,45 @@ func paramSurfaceTemplates() []func(param string) string {
 	}
 }
 
+// sqliErrorTemplates target pages already leaking database error messages.
+func sqliErrorTemplates() []func(param string) string {
+	return []func(string) string{
+		func(pm string) string { return fmt.Sprintf(`intext:"You have an error in your SQL syntax" inurl:%s=`, pm) },
+		func(pm string) string { return fmt.Sprintf(`intext:"mysql_fetch" inurl:%s=`, pm) },
+		func(pm string) string { return fmt.Sprintf(`intext:"Warning: mysql" inurl:%s=`, pm) },
+		func(pm string) string { return fmt.Sprintf(`intext:"Unclosed quotation mark" inurl:%s=`, pm) },
+		func(pm string) string { return fmt.Sprintf(`intext:"ORA-01756" inurl:%s=`, pm) },
+		func(pm string) string { return fmt.Sprintf(`intext:"Microsoft OLE DB Provider" inurl:%s=`, pm) },
+		func(pm string) string { return fmt.Sprintf(`intext:"PostgreSQL query failed" inurl:%s=`, pm) },
+		func(pm string) string { return fmt.Sprintf(`intext:"supplied argument is not a valid MySQL" inurl:%s=`, pm) },
+	}
+}
+
+// sqliEndpointTemplates pair classic dynamic scripts with injectable parameters.
+func sqliEndpointTemplates() []func(param string) string {
+	scripts := []string{"view", "product", "news", "show", "detail", "article", "index", "page", "item", "catalog"}
+	out := make([]func(string) string, 0, len(scripts))
+	for _, script := range scripts {
+		s := script
+		out = append(out, func(pm string) string {
+			return fmt.Sprintf(`inurl:%s.php inurl:%s=`, s, pm)
+		})
+	}
+	return out
+}
+
+// sqliDynamicTemplates surface PHP/ASP query-string endpoints with theme keywords.
+func sqliDynamicTemplates() []func(keyword, param string) string {
+	return []func(string, string) string{
+		func(kw, pm string) string { return fmt.Sprintf(`inurl:.php? inurl:%s= intext:%s`, pm, kw) },
+		func(kw, pm string) string { return fmt.Sprintf(`inurl:.asp? inurl:%s= intext:%s`, pm, kw) },
+		func(kw, pm string) string { return fmt.Sprintf(`ext:php inurl:? inurl:%s= intext:%s`, pm, kw) },
+		func(kw, pm string) string { return fmt.Sprintf(`inurl:.php?%s= intext:%s`, pm, kw) },
+		func(kw, pm string) string { return fmt.Sprintf(`inurl:.php?%s=`, pm) },
+		func(kw, pm string) string { return fmt.Sprintf(`inurl:php?%s= intext:%s`, pm, kw) },
+	}
+}
+
 func applyPhraseClone(phrase, param string) []string {
 	return applyPair(phraseCloneTemplates(), phrase, param)
 }
@@ -115,11 +159,21 @@ func applyPathLayout(path, param string) []string {
 }
 
 func applyParamSurface(param string) []string {
-	out := make([]string, 0, len(paramSurfaceTemplates()))
+	out := make([]string, 0, len(paramSurfaceTemplates())+len(sqliErrorTemplates())+len(sqliEndpointTemplates()))
 	for _, fn := range paramSurfaceTemplates() {
 		out = append(out, fn(param))
 	}
+	for _, fn := range sqliErrorTemplates() {
+		out = append(out, fn(param))
+	}
+	for _, fn := range sqliEndpointTemplates() {
+		out = append(out, fn(param))
+	}
 	return out
+}
+
+func applySQLiDynamic(keyword, param string) []string {
+	return applyPair(sqliDynamicTemplates(), keyword, param)
 }
 
 func applyPair(fns []func(string, string) string, a, b string) []string {

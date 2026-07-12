@@ -63,9 +63,45 @@ func TestGenerateUnique(t *testing.T) {
 	}
 }
 
-func TestTemplateCountIs50(t *testing.T) {
-	if n := TemplateCount(); n != 50 {
-		t.Fatalf("expected exactly 50 templates, got %d", n)
+func TestTemplateCountAtLeast50(t *testing.T) {
+	if n := TemplateCount(); n < 50 {
+		t.Fatalf("expected at least 50 templates, got %d", n)
+	}
+}
+
+func TestSQLiErrorDorkGenerated(t *testing.T) {
+	g := New()
+	out := g.Generate(Options{
+		Keywords:   []string{"catalog"},
+		Parameters: []string{"id"},
+	})
+	found := false
+	for _, d := range out {
+		if strings.Contains(d, `intext:"You have an error in your SQL syntax" inurl:id=`) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected SQL error leak dork")
+	}
+}
+
+func TestSQLiEndpointDorkGenerated(t *testing.T) {
+	g := New()
+	out := g.Generate(Options{
+		Keywords:   []string{"product"},
+		Parameters: []string{"cat"},
+	})
+	found := false
+	for _, d := range out {
+		if strings.Contains(d, "inurl:product.php inurl:cat=") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected classic endpoint dork inurl:product.php inurl:cat=")
 	}
 }
 
