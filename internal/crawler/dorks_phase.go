@@ -6,16 +6,25 @@ import (
 	"strings"
 
 	"github.com/xadv404/letter/internal/dorks"
+	"github.com/xadv404/letter/internal/keywords"
 )
 
 func (e *Engine) generateDorks(domains []string) string {
 	fp := dorks.NewFingerprint()
+	var kwList, phList []string
 
 	for _, domain := range domains {
 		rawHost, _ := dorks.SiteScope(domain)
 		host := NormalizeHost(rawHost)
 
-		for _, r := range e.scorer.TopInjectableParams(host, 50) {
+		for _, r := range e.kw.TopForDomain(host, 40) {
+			fp.AddTerm(r.Keyword)
+			kwList = append(kwList, r.Keyword)
+		}
+		for _, path := range e.kw.TopPathsForDomain(host, 30) {
+			fp.AddPath(path)
+		}
+		for _, r := range e.scorer.TopInjectableParams(host, 40) {
 			fp.AddParameter(r.Name)
 		}
 		for _, flagged := range e.scorer.FlaggedURLs(host) {
@@ -31,32 +40,74 @@ func (e *Engine) generateDorks(domains []string) string {
 		}
 	}
 
-	for _, p := range dorks.ExpandInjectableParams(fp.Parameters) {
-		fp.AddParameter(p)
+	// Session-wide ranked keywords (intelligence layer).
+	for _, r := range e.kw.Top(50) {
+		fp.AddTerm(r.Keyword)
+		kwList = append(kwList, r.Keyword)
+	}
+
+	seedTerms := uniqueStrings(kwList)
+	expanded := keywords.ExpandAutocomplete(seedTerms, 15)
+	for _, term := range expanded {
+		fp.AddTerm(term)
+		kwList = append(kwList, term)
+	}
+	if len(expanded) > 0 {
+		e.log(fmt.Sprintf("[Keywords] +%d termes via autocomplete", len(expanded)))
+	}
+
+	for _, r := range e.kw.Top(60) {
+		term := r.Keyword
+		if strings.Contains(term, " ") {
+			phList = append(phList, term)
+		} else {
+			kwList = append(kwList, term)
+		}
 	}
 
 	fp.Finalize()
+	kwList = uniqueStrings(kwList)
+	phList = uniqueStrings(phList)
 
-	if !fp.Viable() {
-		e.log("[Phase 4] Aucun param — crawl des seeds avec query strings (?id=, ?cat=)")
-		return "No dorks generated."
+	if len(fp.Parameters) == 0 && len(kwList) == 0 {
+		e.log("[Phase 4] Données insuffisantes — crawl plus de pages")
+		return "No materials prepared."
 	}
 
-	set := dorks.GenerateURLVolume(fp.Parameters)
+	materials := dorks.PrepareMaterials(*fp, kwList, phList)
 
-	for _, dork := range set.All {
-		_ = e.exporter.WriteDork(dork)
+	if err := e.exporter.WriteMaterials(materials); err != nil {
+		e.log("[Phase 4] Erreur export: " + err.Error())
+		return "Export failed."
 	}
 
 	e.log(fmt.Sprintf(
-		"[Phase 4] %d dorks URL-VOLUME (cible 200-500k URLs) → dorks.txt",
-		len(set.All),
+		"[Phase 4] %d dorktypes | %d keywords | %d params — combine externally",
+		len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params),
 	))
-	preview := dorks.PreviewList(set.All, len(set.All))
+	preview := dorks.PreviewMaterials(materials)
 	e.log(preview)
 	return strings.Join([]string{
-		fmt.Sprintf("%d dorks ultra-larges — ~5-10k URLs/dork → 200-500k total", len(set.All)),
-		"Lance chaque dork sur Google (paginer au max)",
+		fmt.Sprintf("dorktypes.txt: %d patterns ({param} {kw} {path})", len(materials.Types)),
+		fmt.Sprintf("keywords.txt: %d keywords + %d phrases", len(materials.Keywords), len(materials.Phrases)),
+		fmt.Sprintf("params.txt: %d params + %d paths", len(materials.Params), len(materials.Paths)),
 		preview,
 	}, "\n")
+}
+
+func uniqueStrings(in []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }

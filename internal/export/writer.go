@@ -7,87 +7,141 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/xadv404/letter/internal/dorks"
 )
 
 type Writer struct {
-	mu              sync.Mutex
-	outputDir       string
-	dorksPath       string
-	exploitablePath string
-	dorks           *os.File
-	exploitable     *os.File
-	dorkWriter      *bufio.Writer
-	exploitWriter   *bufio.Writer
-	dorksHeader     bool
-	exploitHeader   bool
-	lastFlush       time.Time
-	flushEvery      time.Duration
+	mu            sync.Mutex
+	outputDir     string
+	typesPath     string
+	keywordsPath  string
+	paramsPath    string
+	dorksPath     string // legacy alias → typesPath
+	typesFile     *os.File
+	keywordsFile  *os.File
+	paramsFile    *os.File
+	typesWriter   *bufio.Writer
+	keywordsWriter *bufio.Writer
+	paramsWriter  *bufio.Writer
+	typesHeader   bool
+	kwHeader      bool
+	pmHeader      bool
+	lastFlush     time.Time
+	flushEvery    time.Duration
 }
 
 func New(outputDir string) (*Writer, error) {
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, err
 	}
-	dorkPath := filepath.Join(outputDir, "dorks.txt")
-	exploitPath := filepath.Join(outputDir, "dorks_exploitable.txt")
+	typesPath := filepath.Join(outputDir, "dorktypes.txt")
+	keywordsPath := filepath.Join(outputDir, "keywords.txt")
+	paramsPath := filepath.Join(outputDir, "params.txt")
 
-	dorkFile, err := os.OpenFile(dorkPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	typesFile, err := os.OpenFile(typesPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, err
 	}
-	exploitFile, err := os.OpenFile(exploitPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	kwFile, err := os.OpenFile(keywordsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
-		dorkFile.Close()
+		typesFile.Close()
+		return nil, err
+	}
+	pmFile, err := os.OpenFile(paramsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		typesFile.Close()
+		kwFile.Close()
 		return nil, err
 	}
 
 	return &Writer{
-		outputDir:       outputDir,
-		dorksPath:       dorkPath,
-		exploitablePath: exploitPath,
-		dorks:           dorkFile,
-		exploitable:     exploitFile,
-		dorkWriter:      bufio.NewWriter(dorkFile),
-		exploitWriter:   bufio.NewWriter(exploitFile),
-		flushEvery:      2 * time.Second,
-		lastFlush:       time.Now(),
+		outputDir:      outputDir,
+		typesPath:      typesPath,
+		keywordsPath:   keywordsPath,
+		paramsPath:     paramsPath,
+		dorksPath:      typesPath,
+		typesFile:      typesFile,
+		keywordsFile:   kwFile,
+		paramsFile:     pmFile,
+		typesWriter:    bufio.NewWriter(typesFile),
+		keywordsWriter: bufio.NewWriter(kwFile),
+		paramsWriter:   bufio.NewWriter(pmFile),
+		flushEvery:     2 * time.Second,
+		lastFlush:      time.Now(),
 	}, nil
 }
 
-func (w *Writer) WriteDork(line string) error {
-	return w.writeLine(w.dorks, &w.dorkWriter, &w.dorksHeader, "dorks", line)
-}
-
-// WriteExploitableDork writes a high-confidence SQLi dork (run these first on Google).
-func (w *Writer) WriteExploitableDork(line string) error {
-	return w.writeLine(w.exploitable, &w.exploitWriter, &w.exploitHeader, "exploitable SQLi dorks", line)
-}
-
-func (w *Writer) writeLine(f *os.File, bw **bufio.Writer, header *bool, label, line string) error {
+// WriteMaterials exports dork types + keywords + params (no assembled dorks).
+func (w *Writer) WriteMaterials(m dorks.Materials) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if !*header {
+
+	if !w.typesHeader {
 		ts := time.Now().UTC().Format(time.RFC3339)
-		if _, err := fmt.Fprintf(*bw, "# Letter Recon %s — generated %s\n# ~50 dorks × ~5-10k URLs = 200-500k URLs target\n", label, ts); err != nil {
+		fmt.Fprintf(w.typesWriter, "# Letter Recon dork types — %s\n", ts)
+		fmt.Fprintf(w.typesWriter, "# Patterns with {param} {kw} {path} — combine externally\n")
+		fmt.Fprintf(w.typesWriter, "# family | volume | slots | pattern\n")
+		w.typesHeader = true
+	}
+	for _, t := range m.Types {
+		slots := ""
+		for i, s := range t.Slots {
+			if i > 0 {
+				slots += ","
+			}
+			slots += s
+		}
+		if _, err := fmt.Fprintf(w.typesWriter, "%s | %s | %s | %s\n", t.Family, t.Volume, slots, t.Pattern); err != nil {
 			return err
 		}
-		*header = true
 	}
-	if _, err := fmt.Fprintln(*bw, line); err != nil {
-		return err
+
+	if !w.kwHeader {
+		ts := time.Now().UTC().Format(time.RFC3339)
+		fmt.Fprintf(w.keywordsWriter, "# Letter Recon keywords — %s\n", ts)
+		fmt.Fprintf(w.keywordsWriter, "# Ranked theme keywords from crawl + autocomplete\n")
+		w.kwHeader = true
 	}
-	return w.maybeFlush()
+	for _, kw := range m.Keywords {
+		if _, err := fmt.Fprintln(w.keywordsWriter, kw); err != nil {
+			return err
+		}
+	}
+	for _, ph := range m.Phrases {
+		if _, err := fmt.Fprintf(w.keywordsWriter, "\"%s\"\n", ph); err != nil {
+			return err
+		}
+	}
+
+	if !w.pmHeader {
+		ts := time.Now().UTC().Format(time.RFC3339)
+		fmt.Fprintf(w.paramsWriter, "# Letter Recon params — %s\n", ts)
+		fmt.Fprintf(w.paramsWriter, "# Injectable params from seed crawl\n")
+		w.pmHeader = true
+	}
+	for _, pm := range m.Params {
+		if _, err := fmt.Fprintln(w.paramsWriter, pm); err != nil {
+			return err
+		}
+	}
+	for _, path := range m.Paths {
+		if _, err := fmt.Fprintf(w.paramsWriter, "# path:%s\n", path); err != nil {
+			return err
+		}
+	}
+
+	return w.flushLocked()
 }
 
-func (w *Writer) maybeFlush() error {
+func (w *Writer) flushLocked() error {
 	if time.Since(w.lastFlush) < w.flushEvery {
 		return nil
 	}
-	if err := w.dorkWriter.Flush(); err != nil {
-		return err
-	}
-	if err := w.exploitWriter.Flush(); err != nil {
-		return err
+	for _, bw := range []*bufio.Writer{w.typesWriter, w.keywordsWriter, w.paramsWriter} {
+		if err := bw.Flush(); err != nil {
+			return err
+		}
 	}
 	w.lastFlush = time.Now()
 	return nil
@@ -97,32 +151,23 @@ func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	var first error
-	if err := w.dorkWriter.Flush(); err != nil {
-		first = err
+	for _, bw := range []*bufio.Writer{w.typesWriter, w.keywordsWriter, w.paramsWriter} {
+		if err := bw.Flush(); err != nil && first == nil {
+			first = err
+		}
 	}
-	if err := w.exploitWriter.Flush(); err != nil && first == nil {
-		first = err
-	}
-	if err := w.dorks.Close(); err != nil && first == nil {
-		first = err
-	}
-	if err := w.exploitable.Close(); err != nil && first == nil {
-		first = err
+	for _, f := range []*os.File{w.typesFile, w.keywordsFile, w.paramsFile} {
+		if err := f.Close(); err != nil && first == nil {
+			first = err
+		}
 	}
 	return first
 }
 
-// DorksPath returns the path to the generated dorks file.
-func (w *Writer) DorksPath() string {
-	return w.dorksPath
-}
+// DorksPath returns dorktypes.txt (primary export).
+func (w *Writer) DorksPath() string { return w.typesPath }
 
-// ExploitableDorksPath returns high-confidence SQLi dorks (run first).
-func (w *Writer) ExploitableDorksPath() string {
-	return w.exploitablePath
-}
-
-// OutputDir returns the configured output directory.
-func (w *Writer) OutputDir() string {
-	return w.outputDir
-}
+func (w *Writer) TypesPath() string     { return w.typesPath }
+func (w *Writer) KeywordsPath() string  { return w.keywordsPath }
+func (w *Writer) ParamsPath() string    { return w.paramsPath }
+func (w *Writer) OutputDir() string     { return w.outputDir }
