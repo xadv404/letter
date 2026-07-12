@@ -43,6 +43,6 @@ Le dashboard s'ouvre dans le navigateur. `Ctrl+C` pour quitter.
 
 | Problème | Solution |
 |----------|----------|
-| Double-clic, rien ne se passe | Installe WebView2 (lien ci-dessus) ou lance depuis `cmd` pour voir l'erreur |
+| Double-clic, rien ne se passe | Installe WebView2 — au lancement une fenêtre **Oui/Non** propose d'ouvrir la page d'installation |
 | `index.html manquant` | `go generate ./internal/dashboard/...` |
 | Port déjà utilisé | Ferme les autres instances de Letter Recon |
