@@ -55,15 +55,6 @@
               <div class="field"><label for="delay">Délai (ms)</label><input id="delay" name="delay_ms" type="number" min="50" max="5000" /></div>
             </div>
           </div>
-          <div class="settings-section">
-            <div class="settings-section-header"><h2>SQLi & export</h2><p>Scoring et dorks</p></div>
-            <div class="settings-body">
-              <div class="field-row">
-                <div class="field"><label for="minscore">Score minimum</label><input id="minscore" name="min_param_score" type="number" min="50" max="100" /></div>
-                <div class="field"><label for="output">Dossier dorks</label><input id="output" name="output_dir" type="text" /></div>
-              </div>
-            </div>
-          </div>
           <div class="btn-row">
             <button class="btn-ctrl primary" type="submit"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-save"/></svg> Enregistrer</button>
             <span id="save-msg" class="save-msg"></span>
@@ -79,8 +70,6 @@
       document.getElementById("pages").value = c.page_limit;
       document.getElementById("workers").value = c.workers;
       document.getElementById("delay").value = c.delay_ms;
-      document.getElementById("minscore").value = c.min_param_score;
-      document.getElementById("output").value = c.output_dir;
     });
     document.getElementById("settings-form").addEventListener("submit", function (e) {
       e.preventDefault();
@@ -89,8 +78,6 @@
         page_limit: parseInt(document.getElementById("pages").value, 10),
         workers: parseInt(document.getElementById("workers").value, 10),
         delay_ms: parseInt(document.getElementById("delay").value, 10),
-        min_param_score: parseInt(document.getElementById("minscore").value, 10),
-        output_dir: document.getElementById("output").value,
       };
       LetterAPI.putConfig(cfg).then(function () {
         var msg = document.getElementById("save-msg");

@@ -42,13 +42,11 @@ func newApp() *App {
 }
 
 type configDTO struct {
-	DomainFile    string `json:"domain_file"`
-	OutputDir     string `json:"output_dir"`
-	Depth         int    `json:"depth"`
-	PageLimit     int    `json:"page_limit"`
-	Workers       int    `json:"workers"`
-	DelayMS       int    `json:"delay_ms"`
-	MinParamScore int    `json:"min_param_score"`
+	DomainFile string `json:"domain_file"`
+	Depth      int    `json:"depth"`
+	PageLimit  int    `json:"page_limit"`
+	Workers    int    `json:"workers"`
+	DelayMS    int    `json:"delay_ms"`
 }
 
 type snapshotDTO struct {
@@ -150,9 +148,6 @@ func (a *App) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) applyConfigDTO(in configDTO) {
-	if in.OutputDir != "" {
-		a.cfg.OutputDir = in.OutputDir
-	}
 	if in.Depth > 0 {
 		a.cfg.Depth = in.Depth
 	}
@@ -165,9 +160,6 @@ func (a *App) applyConfigDTO(in configDTO) {
 	if in.DelayMS > 0 {
 		a.cfg.DelayMS = in.DelayMS
 	}
-	if in.MinParamScore > 0 {
-		a.cfg.MinParamScore = in.MinParamScore
-	}
 	if in.DomainFile != "" {
 		a.domainFile = in.DomainFile
 		a.cfg.DomainFile = in.DomainFile
@@ -177,10 +169,11 @@ func (a *App) applyConfigDTO(in configDTO) {
 
 func (a *App) configResponse() configDTO {
 	return configDTO{
-		DomainFile: a.domainFile, OutputDir: a.cfg.OutputDir,
-		Depth: a.cfg.Depth, PageLimit: a.cfg.PageLimit,
-		Workers: a.cfg.Workers, DelayMS: a.cfg.DelayMS,
-		MinParamScore: a.cfg.MinParamScore,
+		DomainFile: a.domainFile,
+		Depth:      a.cfg.Depth,
+		PageLimit:  a.cfg.PageLimit,
+		Workers:    a.cfg.Workers,
+		DelayMS:    a.cfg.DelayMS,
 	}
 }
 
