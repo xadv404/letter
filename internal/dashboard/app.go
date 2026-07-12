@@ -13,6 +13,7 @@ import (
 
 	"github.com/xadv404/letter/internal/config"
 	"github.com/xadv404/letter/internal/crawler"
+	"github.com/xadv404/letter/internal/dialog"
 	"github.com/xadv404/letter/internal/monitor"
 )
 
@@ -274,11 +275,27 @@ func (a *App) handleStart(w http.ResponseWriter, r *http.Request) {
 			a.mu.Unlock()
 		},
 		OnDorksDone: func(path string) {
-			a.mu.Lock()
-			a.dorksPath = path
-			a.appendLog("Dorks prêtes → " + path)
-			a.hub.Broadcast(mustJSON(map[string]string{"type": "dorks_ready", "path": path}))
-			a.mu.Unlock()
+			dispatchOnMain(func() {
+				dest, cancelled, err := dialog.SaveDorks(path)
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				if err != nil {
+					a.dorksPath = path
+					a.appendLog("Erreur enregistrement: " + err.Error())
+				} else if cancelled {
+					a.dorksPath = path
+					a.appendLog("Enregistrement annulé — fichier temporaire: " + path)
+				} else {
+					a.dorksPath = dest
+					a.appendLog("Dorks enregistrés → " + dest)
+				}
+				a.hub.Broadcast(mustJSON(map[string]any{
+					"type":       "dorks_ready",
+					"path":       a.dorksPath,
+					"saved":      !cancelled && err == nil,
+					"cancelled":  cancelled,
+				}))
+			})
 		},
 	}
 

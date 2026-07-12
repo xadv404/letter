@@ -8,7 +8,6 @@
   var btnPause = document.getElementById("btn-pause");
   var btnResume = document.getElementById("btn-resume");
   var btnStop = document.getElementById("btn-stop");
-  var btnDorks = document.getElementById("btn-dorks");
   var fileInput = document.getElementById("domains-file");
   var domainLabel = document.getElementById("domain-file-label");
 
@@ -48,7 +47,6 @@
 
     if (s.dork_preview) dorkPreview.textContent = s.dork_preview;
     if (s.domain_file) domainLabel.textContent = "Fichier : " + s.domain_file;
-    if (s.dorks_path) btnDorks.style.display = "inline-flex";
 
     domainsBody.innerHTML = "";
     (s.domains || []).forEach(function (d) {
@@ -69,8 +67,8 @@
     if (ev.type === "snapshot") applySnapshot(ev.data);
     if (ev.type === "log") appendLog(ev.line);
     if (ev.type === "dorks_ready") {
-      btnDorks.style.display = "inline-flex";
-      appendLog("Dorks prêtes — téléchargez le fichier");
+      if (ev.saved) appendLog("Fichier enregistré via l'explorateur Windows");
+      else if (ev.cancelled) appendLog("Enregistrement annulé");
     }
   }
 
