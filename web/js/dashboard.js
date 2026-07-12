@@ -28,8 +28,7 @@
   function applySnapshot(s) {
     if (!s) return;
     setRunning(!!s.running);
-    document.getElementById("phase-label").textContent = s.phase_label || "En attente";
-    document.getElementById("stat-phase").textContent = s.phase ? s.phase + "/4" : "—";
+    document.getElementById("status-detail").textContent = s.running ? "En cours…" : (s.elapsed && s.elapsed !== "0s" ? "Terminé" : "En attente");
     document.getElementById("stat-elapsed").textContent = s.elapsed || "0s";
     document.getElementById("stat-kw").textContent = s.keywords || 0;
     document.getElementById("stat-params").textContent = s.params || 0;
