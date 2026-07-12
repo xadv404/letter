@@ -3,3 +3,4 @@ dist/
 output/
 output-real/
 *.exe
+/letter
