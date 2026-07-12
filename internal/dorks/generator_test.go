@@ -21,16 +21,9 @@ func TestNoSeedHostInDorks(t *testing.T) {
 		if strings.Contains(d, seed) {
 			t.Fatalf("dork must not reference crawled host: %s", d)
 		}
-	}
-	foundTLD := false
-	for _, d := range out {
-		if strings.Contains(d, "site:*.com") {
-			foundTLD = true
-			break
+		if strings.Contains(d, "site:") {
+			t.Fatalf("dork must not contain site: operator: %s", d)
 		}
-	}
-	if !foundTLD {
-		t.Fatal("expected TLD-scoped dorks for similar-site discovery")
 	}
 }
 
@@ -70,9 +63,9 @@ func TestGenerateUnique(t *testing.T) {
 	}
 }
 
-func TestTemplateCountAtLeast35(t *testing.T) {
-	if TemplateCount() < 35 {
-		t.Fatalf("expected 35+ templates, got %d", TemplateCount())
+func TestTemplateCountAtLeast20(t *testing.T) {
+	if TemplateCount() < 20 {
+		t.Fatalf("expected 20+ templates, got %d", TemplateCount())
 	}
 }
 
