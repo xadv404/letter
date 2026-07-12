@@ -207,7 +207,7 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 
 	close(monitorDone)
 
-	e.setPhase(4, "Phase 4/4 — Google Dork generation")
+	e.setPhase(4, "Phase 4/4 — Dorktypes + keywords")
 	preview := e.generateDorks(domains)
 	e.emitSnapshot("Complete", false, preview)
 	dorksPath := e.exporter.DorksPath()
