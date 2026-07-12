@@ -12,9 +12,19 @@ import (
 	"github.com/xadv404/letter/internal/config"
 	"github.com/xadv404/letter/internal/crawler"
 	"github.com/xadv404/letter/internal/license"
+	"github.com/xadv404/letter/internal/ui"
 )
 
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "-gui" || os.Args[1] == "--gui") {
+		ui.Run()
+		return
+	}
+
+	runCLI()
+}
+
+func runCLI() {
 	cfg := config.Default()
 
 	domainsFlag := flag.String("domains", "", "Comma-separated list of domains")

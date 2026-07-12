@@ -1,12 +1,13 @@
 package crawler
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/xadv404/letter/internal/dorks"
 )
 
-func (e *Engine) generateDorks(domains []string) {
+func (e *Engine) generateDorks(domains []string) string {
+	var previews []string
 	for _, domain := range domains {
 		host, tld := dorks.SiteScope(domain)
 
@@ -36,13 +37,15 @@ func (e *Engine) generateDorks(domains []string) {
 			Parameters: parameters,
 		}
 
-		fmt.Printf("[Phase 4] Dorks for %s — %d keywords × %d params (%d templates/pair)\n",
-			host, len(keywords), len(parameters), dorks.TemplateCount())
-
-		fmt.Print(dorks.Preview(opts, 5))
+		msg := "[Phase 4] Dorks for " + host
+		e.log(msg)
+		preview := dorks.Preview(opts, 8)
+		previews = append(previews, preview)
+		e.log(preview)
 
 		for _, dork := range e.dorks.Generate(opts) {
 			_ = e.exporter.WriteDork(dork)
 		}
 	}
+	return strings.Join(previews, "\n")
 }

@@ -125,13 +125,6 @@ func buildDorks(host, tld, keyword, param string) []string {
 	}
 }
 
-func quoteIfSpace(s string) string {
-	if strings.Contains(s, " ") {
-		return s
-	}
-	return s
-}
-
 func Preview(opts Options, limit int) string {
 	opts.PreviewLimit = limit
 	g := New()

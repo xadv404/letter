@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/html"
@@ -38,10 +39,18 @@ type Engine struct {
 
 	pauseCh  chan struct{}
 	resumeCh chan struct{}
-	stopCh chan struct{}
+	stopCh   chan struct{}
+	stopOnce sync.Once
+
+	events Events
+	phase  atomic.Int32
 }
 
 func New(cfg config.CrawlConfig) (*Engine, error) {
+	return NewWithEvents(cfg, Events{})
+}
+
+func NewWithEvents(cfg config.CrawlConfig, events Events) (*Engine, error) {
 	if err := os.MkdirAll(cfg.OutputDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -65,8 +74,40 @@ func New(cfg config.CrawlConfig) (*Engine, error) {
 		client:         &http.Client{Timeout: 15 * time.Second},
 		pauseCh:        make(chan struct{}, 1),
 		resumeCh:       make(chan struct{}, 1),
-		stopCh: make(chan struct{}),
+		stopCh:         make(chan struct{}),
+		events:         events,
 	}, nil
+}
+
+func (e *Engine) log(msg string) {
+	if e.events.OnLog != nil {
+		e.events.OnLog(msg)
+	} else {
+		fmt.Println(msg)
+	}
+}
+
+func (e *Engine) setPhase(n int, label string) {
+	e.phase.Store(int32(n))
+	e.emitSnapshot(label, n == 4, "")
+}
+
+func (e *Engine) emitSnapshot(phaseLabel string, running bool, dorkPreview string) {
+	if e.events.OnSnapshot == nil {
+		return
+	}
+	snap := e.throttle.Refresh(countGoroutines())
+	acc, rej := e.scorer.Stats()
+	ui := e.dashboard.Snapshot(
+		int(e.phase.Load()),
+		phaseLabel,
+		snap,
+		e.scorer.Decisions(),
+		acc, rej,
+		dorkPreview,
+		running,
+	)
+	e.events.OnSnapshot(ui)
 }
 
 func LoadDomains(path string) ([]string, error) {
@@ -92,9 +133,14 @@ func LoadDomains(path string) ([]string, error) {
 
 func (e *Engine) Pause()  { e.state.Pause(); e.pauseCh <- struct{}{} }
 func (e *Engine) Resume() { e.state.Resume(); e.resumeCh <- struct{}{} }
-func (e *Engine) Stop()   { close(e.stopCh) }
+func (e *Engine) Stop() {
+	e.stopOnce.Do(func() { close(e.stopCh) })
+}
 
 func (e *Engine) Run(ctx context.Context, domains []string) error {
+	e.dashboard.Reset()
+	e.setPhase(1, "Phase 1/4 — Crawling")
+
 	domainCh := make(chan string)
 	var wg sync.WaitGroup
 	workerCount := e.cfg.Workers
@@ -121,8 +167,9 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 
 	close(monitorDone)
 
-	fmt.Println("\n=== Phase 4/4 — Google Dork generation ===")
-	e.generateDorks(domains)
+	e.setPhase(4, "Phase 4/4 — Google Dork generation")
+	preview := e.generateDorks(domains)
+	e.emitSnapshot("Complete", false, preview)
 	return e.exporter.Close()
 }
 
@@ -136,7 +183,11 @@ func (e *Engine) monitorLoop(done <-chan struct{}) {
 		case <-ticker.C:
 			snap := e.throttle.Refresh(countGoroutines())
 			acc, rej := e.scorer.Stats()
-			e.dashboard.Render(os.Stdout, snap, e.scorer.Decisions(), acc, rej)
+			if e.events.OnSnapshot != nil {
+				e.emitSnapshot(phaseLabel(int(e.phase.Load())), true, "")
+			} else {
+				e.dashboard.Render(os.Stdout, snap, e.scorer.Decisions(), acc, rej)
+			}
 		}
 	}
 }
@@ -150,7 +201,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		return
 	}
 	hostKey := u.Host
-	fmt.Printf("[Phase 1] Crawling %s\n", hostKey)
+	e.log("[Phase 1] Crawling " + hostKey)
 	progress := e.state.Get(hostKey)
 	if progress.Finished {
 		return
@@ -209,6 +260,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		}
 		pages++
 
+		e.setPhase(2, "Phase 2/4 — Keyword extraction")
 		_ = e.exporter.WriteURL(hostKey, rawURL)
 
 		doc, err := html.Parse(strings.NewReader(body))
@@ -229,6 +281,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 			}
 		}
 
+		e.setPhase(3, "Phase 3/4 — SQLi parameter scoring")
 		for _, pr := range e.scorer.ScoreURL(hostKey, rawURL, e.cfg.MinParamScore) {
 			_ = e.exporter.WriteParameter(pr.Domain, pr.URL, pr.Name, pr.Score, string(pr.Tier), pr.Matched)
 			e.dashboard.AddParams(1)
@@ -355,6 +408,21 @@ func (e *Engine) persist(host string, pages, errors int, finished bool, visited 
 		p.Visited = vis
 		p.Queue = append([]string{}, queue...)
 	})
+}
+
+func phaseLabel(n int) string {
+	switch n {
+	case 1:
+		return "Phase 1/4 — Crawling"
+	case 2:
+		return "Phase 2/4 — Keyword extraction"
+	case 3:
+		return "Phase 3/4 — SQLi parameter scoring"
+	case 4:
+		return "Phase 4/4 — Google Dork generation"
+	default:
+		return "Idle"
+	}
 }
 
 func countGoroutines() int {
