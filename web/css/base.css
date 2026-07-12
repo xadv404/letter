@@ -22,7 +22,7 @@
   --font: "Inter", system-ui, sans-serif;
   --mono: "JetBrains Mono", Consolas, monospace;
   --shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
-  --sidebar-w: 260px;
+  --sidebar-w: 200px;
 }
 
 *, *::before, *::after {

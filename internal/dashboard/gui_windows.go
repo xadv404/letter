@@ -9,8 +9,8 @@ func runGUI(url string, onClose func()) {
 		AutoFocus: true,
 		WindowOptions: webview2.WindowOptions{
 			Title:  "Letter Recon",
-			Width:  1200,
-			Height: 820,
+			Width:  920,
+			Height: 600,
 			Center: true,
 		},
 	})
