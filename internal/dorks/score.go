@@ -65,11 +65,19 @@ func RateDork(d AssembledDork, m Materials) (int, string) {
 	if strings.Count(d.Dork, "inurl:") > 1 {
 		score -= 6
 	}
+	if isRedundantScriptDork(d.Dork, d.Param) {
+		score -= 12
+	}
+	if isNoiseParam(d.Param) {
+		score -= 40
+	}
 	if d.Path != "" {
 		score += 5
 	}
 	if IsExploitableParam(d.Param) {
 		score += 8
+	} else if !isPrimaryInjectable(d.Param) {
+		score -= 10
 	}
 
 	score = clampScore(score)
@@ -156,4 +164,17 @@ func RankedStrings(m Materials) []string {
 		out[i] = d.Dork
 	}
 	return out
+}
+
+// isRedundantScriptDork penalizes index.php?param= style duplicates.
+func isRedundantScriptDork(dork, param string) bool {
+	if param == "" {
+		return false
+	}
+	for _, script := range []string{"index.php?", "item.php?", "list.php?", "news.php?", "forum.php?", "profile.php?", "product.php?", "view.php?"} {
+		if strings.Contains(dork, "inurl:"+script+param+"=") {
+			return true
+		}
+	}
+	return false
 }
