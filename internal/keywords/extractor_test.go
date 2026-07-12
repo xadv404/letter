@@ -136,6 +136,23 @@ func TestHeadingHigherWeightThanParagraph(t *testing.T) {
 	}
 }
 
+func TestAcceptReconTokens(t *testing.T) {
+	f := NewFilter()
+	for _, w := range []string{"catalog", "product", "inventory", "database", "backup", "sql", "injection"} {
+		if !f.AcceptToken(w) {
+			t.Fatalf("expected %q to be accepted", w)
+		}
+	}
+}
+
+func TestURLPathScoresDomain(t *testing.T) {
+	e := New(1000)
+	_ = e.ExtractFromURL("shop.com", "https://shop.com/catalog/product/inventory.php")
+	if len(e.domainScores["shop.com"]) == 0 {
+		t.Fatalf("expected domain scores, got %#v", e.domainScores)
+	}
+}
+
 func TestExtractFromURLPath(t *testing.T) {
 	e := New(1000)
 	results := e.ExtractFromURL("shop.com", "https://shop.com/catalog/product-detail/inventory.php?id=1")
@@ -150,6 +167,45 @@ func TestExtractFromURLPath(t *testing.T) {
 		if !found[want] {
 			t.Fatalf("expected path keyword %q, got %#v", want, results)
 		}
+	}
+}
+
+func TestMetaDescriptionExtraction(t *testing.T) {
+	doc := parseHTML(`<html><head>
+		<meta name="description" content="Online invoice payment portal for wholesale customers" />
+	</head><body><p>noise</p></body></html>`)
+	e := New(1000)
+	results := e.ExtractPage("shop.com", "https://shop.com/", doc)
+	found := false
+	for _, r := range results {
+		if strings.Contains(r.Keyword, "invoice") && r.Source == "bigram" || r.Source == "trigram" || r.Source == "meta" || r.Keyword == "invoice" {
+			if strings.Contains(r.Keyword, "invoice") {
+				found = true
+				break
+			}
+		}
+		if r.Keyword == "invoice" || r.Keyword == "invoice payment" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected invoice-related keyword from meta, got %#v", results)
+	}
+}
+
+func TestTopPrefersReconPhrases(t *testing.T) {
+	e := New(1000)
+	e.ExtractPage("shop.com", "https://shop.com/a", parseHTML(`<html><body><p>data</p></body></html>`))
+	e.ExtractPage("shop.com", "https://shop.com/b", parseHTML(`<html><body><h1>invoice payment portal</h1></body></html>`))
+	e.ExtractPage("shop.com", "https://shop.com/c", parseHTML(`<html><body><h2>invoice payment portal</h2></body></html>`))
+
+	top := e.TopForDomain("shop.com", 3)
+	if len(top) == 0 {
+		t.Fatal("expected keywords")
+	}
+	if !strings.Contains(top[0].Keyword, "invoice") {
+		t.Fatalf("expected recon phrase first, got %#v", top)
 	}
 }
 

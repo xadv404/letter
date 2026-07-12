@@ -16,7 +16,9 @@ var tagWeights = map[string]int{
 	"title": 5,
 	"h1": 5, "h2": 4, "h3": 3,
 	"h4": 2, "h5": 2, "h6": 2,
+	"th": 3, "label": 3, "button": 2,
 	"a": 2,
+	"td": 2, "dt": 2, "dd": 2,
 	"p": 1, "li": 1, "span": 1,
 }
 
@@ -25,7 +27,7 @@ type Result struct {
 	Domain  string
 	Keyword string
 	Weight  int
-	Source  string // token, bigram, trigram, heading
+	Source  string // token, bigram, trigram, heading, meta, url-path
 }
 
 type block struct {
@@ -39,63 +41,73 @@ type Extractor struct {
 	filter     *Filter
 	maxSession int
 
-	scores        map[string]int
-	domainScores  map[string]map[string]int
-	emitted       map[string]int
-	sessionLen    int
+	scores         map[string]int
+	domainScores   map[string]map[string]int
+	domainPageHits map[string]map[string]int
+	domainPageSeen map[string]map[string]map[string]struct{}
+	emitted        map[string]int
+	sessionLen     int
 }
 
 func New(maxCount int) *Extractor {
 	return &Extractor{
-		filter:     NewFilter(),
-		maxSession: maxCount,
-		scores:       map[string]int{},
-		domainScores: map[string]map[string]int{},
-		emitted:      map[string]int{},
+		filter:         NewFilter(),
+		maxSession:     maxCount,
+		scores:         map[string]int{},
+		domainScores:   map[string]map[string]int{},
+		domainPageHits: map[string]map[string]int{},
+		domainPageSeen: map[string]map[string]map[string]struct{}{},
+		emitted:        map[string]int{},
 	}
 }
 
-func (e *Extractor) Extract(domain string, doc *html.Node) []Result {
+// ExtractPage extracts keywords from a crawled URL and its HTML document.
+func (e *Extractor) ExtractPage(domain, pageURL string, doc *html.Node) []Result {
 	if e.sessionLen >= e.maxSession {
 		return nil
 	}
 
-	blocks := collectBlocks(doc)
 	candidates := map[string]candidate{}
-
-	for _, blk := range blocks {
-		e.processBlock(blk, candidates)
+	e.collectURLPath(pageURL, candidates)
+	if doc != nil {
+		for _, blk := range collectMeta(doc) {
+			e.processBlock(blk, candidates)
+		}
+		for _, blk := range collectBlocks(doc) {
+			e.processBlock(blk, candidates)
+		}
 	}
-
-	return e.commitCandidates(domain, candidates)
+	return e.commitCandidates(domain, pageURL, candidates)
 }
 
-// ExtractFromURL scores keywords from a crawled URL path (requires the page to be visited).
-func (e *Extractor) ExtractFromURL(domain, rawURL string) []Result {
-	if e.sessionLen >= e.maxSession {
-		return nil
-	}
+// Extract extracts keywords from HTML only (used in tests).
+func (e *Extractor) Extract(domain string, doc *html.Node) []Result {
+	return e.ExtractPage(domain, "", doc)
+}
 
+// ExtractFromURL extracts keywords from a URL path only (used in tests).
+func (e *Extractor) ExtractFromURL(domain, rawURL string) []Result {
+	return e.ExtractPage(domain, rawURL, nil)
+}
+
+func (e *Extractor) collectURLPath(rawURL string, out map[string]candidate) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil
+		return
 	}
-
-	candidates := map[string]candidate{}
 	path := strings.Trim(u.Path, "/")
 	if path == "" {
-		return nil
+		return
 	}
 
 	for _, seg := range splitPathSegments(path) {
 		seg = pageExtSuffix.ReplaceAllString(seg, "")
-		if seg == "" || !e.filter.AcceptToken(seg) {
-			continue
+		for _, part := range expandCompoundToken(seg) {
+			if e.filter.AcceptToken(part) {
+				mergeCandidate(out, part, 5, "url-path")
+			}
 		}
-		mergeCandidate(candidates, seg, 4, "url-path")
 	}
-
-	return e.commitCandidates(domain, candidates)
 }
 
 func splitPathSegments(path string) []string {
@@ -104,15 +116,23 @@ func splitPathSegments(path string) []string {
 	})
 }
 
-func (e *Extractor) commitCandidates(domain string, candidates map[string]candidate) []Result {
+func (e *Extractor) commitCandidates(domain, pageURL string, candidates map[string]candidate) []Result {
 	var results []Result
 	for phrase, cand := range candidates {
 		if !e.filter.AcceptPhrase(phrase) && !e.filter.AcceptToken(phrase) {
 			continue
 		}
-		e.scores[phrase] += cand.weight
+		weight := int(float64(cand.weight) * reconWeightMultiplier(phrase))
+		if weight < 1 {
+			weight = 1
+		}
+
+		e.scores[phrase] += weight
 		newScore := e.scores[phrase]
-		e.addDomainScore(domain, phrase, cand.weight)
+		e.addDomainScore(domain, phrase, weight)
+		if pageURL != "" {
+			e.recordPageHit(domain, pageURL, phrase)
+		}
 		if newScore <= e.emitted[phrase] {
 			continue
 		}
@@ -138,9 +158,26 @@ func (e *Extractor) commitCandidates(domain string, candidates map[string]candid
 	return results
 }
 
-func (e *Extractor) Count() int      { return e.sessionLen }
-func (e *Extractor) Unique() int     { return len(e.scores) }
-func (e *Extractor) Stopwords() int  { return len(e.filter.stopwords) }
+func (e *Extractor) recordPageHit(domain, pageURL, keyword string) {
+	if e.domainPageSeen[domain] == nil {
+		e.domainPageSeen[domain] = map[string]map[string]struct{}{}
+	}
+	if e.domainPageSeen[domain][keyword] == nil {
+		e.domainPageSeen[domain][keyword] = map[string]struct{}{}
+	}
+	if _, seen := e.domainPageSeen[domain][keyword][pageURL]; seen {
+		return
+	}
+	e.domainPageSeen[domain][keyword][pageURL] = struct{}{}
+	if e.domainPageHits[domain] == nil {
+		e.domainPageHits[domain] = map[string]int{}
+	}
+	e.domainPageHits[domain][keyword]++
+}
+
+func (e *Extractor) Count() int     { return e.sessionLen }
+func (e *Extractor) Unique() int    { return len(e.scores) }
+func (e *Extractor) Stopwords() int { return len(e.filter.stopwords) }
 
 type candidate struct {
 	weight int
@@ -155,49 +192,80 @@ func (e *Extractor) processBlock(blk block, out map[string]candidate) {
 
 	tokens := tokenize(text)
 	valid := make([]string, 0, len(tokens))
+	seenTok := map[string]struct{}{}
 	for _, t := range tokens {
-		if e.filter.AcceptToken(t) {
-			valid = append(valid, t)
+		for _, part := range expandCompoundToken(t) {
+			if !e.filter.AcceptToken(part) {
+				continue
+			}
+			if _, ok := seenTok[part]; ok {
+				continue
+			}
+			seenTok[part] = struct{}{}
+			valid = append(valid, part)
+			mergeCandidate(out, part, blk.weight, "token")
 		}
 	}
 
-	// Full heading phrase — high value for recon.
 	if isHeading(blk.tag) && e.filter.AcceptPhrase(text) {
-		weight := blk.weight * 2
-		mergeCandidate(out, text, weight, "heading")
+		mergeCandidate(out, text, blk.weight*2, "heading")
 	}
 
-	// Single tokens inherit block weight.
-	for _, tok := range valid {
-		mergeCandidate(out, tok, blk.weight, "token")
-	}
-
-	// Adjacent bigrams/trigrams from the same block preserve context.
 	for i := 0; i < len(valid); i++ {
 		if i+1 < len(valid) {
 			bigram := valid[i] + " " + valid[i+1]
-			w := pairWeight(blk.weight, 2)
-			mergeCandidate(out, bigram, w, "bigram")
+			mergeCandidate(out, bigram, pairWeight(blk.weight, 2), "bigram")
 		}
 		if i+2 < len(valid) && blk.weight >= 3 {
 			trigram := valid[i] + " " + valid[i+1] + " " + valid[i+2]
-			w := pairWeight(blk.weight, 3)
-			mergeCandidate(out, trigram, w, "trigram")
+			mergeCandidate(out, trigram, pairWeight(blk.weight, 3), "trigram")
 		}
 	}
 
-	// Cross-token pairs inside high-weight blocks (headings).
 	if blk.weight >= 3 && len(valid) >= 2 {
 		limit := min(len(valid), 8)
 		for i := 0; i < limit; i++ {
 			for j := i + 1; j < limit && j < i+3; j++ {
 				pair := valid[i] + " " + valid[j]
-				if strings.Contains(pair, " ") {
-					mergeCandidate(out, pair, pairWeight(blk.weight, 2), "pair")
-				}
+				mergeCandidate(out, pair, pairWeight(blk.weight, 2), "pair")
 			}
 		}
 	}
+}
+
+func collectMeta(doc *html.Node) []block {
+	var blocks []block
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "meta" {
+			var name, prop, content string
+			for _, a := range n.Attr {
+				switch strings.ToLower(a.Key) {
+				case "name":
+					name = strings.ToLower(a.Val)
+				case "property":
+					prop = strings.ToLower(a.Val)
+				case "content":
+					content = a.Val
+				}
+			}
+			key := name
+			if prop != "" {
+				key = prop
+			}
+			switch key {
+			case "description", "keywords", "og:title", "og:description", "twitter:title", "twitter:description":
+				if strings.TrimSpace(content) != "" {
+					blocks = append(blocks, block{tag: "meta", weight: 4, text: content})
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	return blocks
 }
 
 func collectBlocks(doc *html.Node) []block {
@@ -208,7 +276,11 @@ func collectBlocks(doc *html.Node) []block {
 			if w, ok := tagWeights[n.Data]; ok {
 				text := deepText(n)
 				if strings.TrimSpace(text) != "" {
-					blocks = append(blocks, block{tag: n.Data, weight: w, text: text})
+					source := n.Data
+					if source == "meta" {
+						source = "meta"
+					}
+					blocks = append(blocks, block{tag: source, weight: w, text: text})
 				}
 			}
 		}
@@ -319,42 +391,75 @@ func (e *Extractor) addDomainScore(domain, phrase string, weight int) {
 
 // Top returns the highest-scoring keywords accumulated in the session.
 func (e *Extractor) Top(limit int) []Result {
-	return e.topFrom(e.scores, limit)
+	return e.topIntelligent(e.scores, nil, limit)
 }
 
-// TopForDomain returns top keywords for a specific domain.
+// TopForDomain returns the best recon keywords for a domain using intelligent ranking.
 func (e *Extractor) TopForDomain(domain string, limit int) []Result {
 	if e.domainScores[domain] == nil {
 		return nil
 	}
-	results := e.topFrom(e.domainScores[domain], limit)
+	results := e.topIntelligent(e.domainScores[domain], e.domainPageHits[domain], limit)
 	for i := range results {
 		results[i].Domain = domain
 	}
 	return results
 }
 
-func (e *Extractor) topFrom(scores map[string]int, limit int) []Result {
-	type kv struct {
-		k string
-		v int
+func (e *Extractor) topIntelligent(scores map[string]int, pageHits map[string]int, limit int) []Result {
+	type ranked struct {
+		keyword string
+		score   float64
+		weight  int
 	}
-	arr := make([]kv, 0, len(scores))
+	arr := make([]ranked, 0, len(scores))
 	for k, v := range scores {
-		arr = append(arr, kv{k, v})
+		hits := 0
+		if pageHits != nil {
+			hits = pageHits[k]
+		}
+		arr = append(arr, ranked{
+			keyword: k,
+			score:   intelligentRank(v, hits, k),
+			weight:  v,
+		})
 	}
 	sort.Slice(arr, func(i, j int) bool {
-		if arr[i].v == arr[j].v {
-			return arr[i].k < arr[j].k
+		if arr[i].score == arr[j].score {
+			return arr[i].keyword < arr[j].keyword
 		}
-		return arr[i].v > arr[j].v
+		return arr[i].score > arr[j].score
 	})
-	if limit > 0 && len(arr) > limit {
-		arr = arr[:limit]
+
+	var picked []ranked
+	for _, item := range arr {
+		skip := false
+		for _, p := range picked {
+			if isSubsumedBy(item.keyword, p.keyword) && item.score <= p.score*1.1 {
+				skip = true
+				break
+			}
+			if isSubsumedBy(p.keyword, item.keyword) && p.score <= item.score*1.1 {
+				for j := range picked {
+					if picked[j].keyword == p.keyword {
+						picked = append(picked[:j], picked[j+1:]...)
+						break
+					}
+				}
+			}
+		}
+		if skip {
+			continue
+		}
+		picked = append(picked, item)
+		if limit > 0 && len(picked) >= limit {
+			break
+		}
 	}
-	out := make([]Result, len(arr))
-	for i, item := range arr {
-		out[i] = Result{Keyword: item.k, Weight: item.v}
+
+	out := make([]Result, len(picked))
+	for i, item := range picked {
+		out[i] = Result{Keyword: item.keyword, Weight: item.weight}
 	}
 	return out
 }
