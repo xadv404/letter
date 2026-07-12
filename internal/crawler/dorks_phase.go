@@ -78,15 +78,15 @@ func (e *Engine) generateDorks(domains []string) string {
 	}
 
 	e.log(fmt.Sprintf(
-		"[Phase 4] %d dorks exploitables (PRIORITAIRES) + %d volume → dorks_exploitable.txt d'abord",
-		len(set.Exploitable), len(set.All),
+		"[Phase 4] %d dorks ELITE (cible 1-2 vuln/1000 URLs) → dorks_exploitable.txt",
+		len(set.Exploitable),
 	))
-	preview := dorks.PreviewList(set.Exploitable, 12)
+	preview := dorks.PreviewList(set.Exploitable, 15)
 	e.log(preview)
 	return strings.Join([]string{
-		fmt.Sprintf("Exploitable: %d dorks (run first) | Volume: %d dorks",
+		fmt.Sprintf("Elite: %d dorks (1-2 vuln/1000) | Volume optionnel: %d",
 			len(set.Exploitable), len(set.All)),
-		fmt.Sprintf("Files: dorks_exploitable.txt → dorks.txt"),
+		"→ Lance UNIQUEMENT dorks_exploitable.txt sur Google",
 		preview,
 	}, "\n")
 }
