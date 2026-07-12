@@ -12,11 +12,22 @@ import (
 
 // Run starts the embedded HTML dashboard in a native GUI window.
 func Run() error {
+	err := runDashboard()
+	if err != nil {
+		failStartup(err)
+	}
+	return err
+}
+
+func runDashboard() error {
 	app := newApp()
 
 	content, err := fs.Sub(staticFS, "static")
 	if err != nil {
-		return err
+		return fmt.Errorf("dashboard assets: %w (run: go generate ./internal/dashboard/...)", err)
+	}
+	if _, err := fs.Stat(content, "index.html"); err != nil {
+		return fmt.Errorf("index.html manquant — exécutez: go generate ./internal/dashboard/...")
 	}
 
 	mux := http.NewServeMux()
@@ -49,11 +60,13 @@ func Run() error {
 
 	go func() { _ = srv.Serve(ln) }()
 
-	runGUI(url, func() {
+	if err := runGUI(url, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), throttle.GracefulShutdown)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
-	})
+	}); err != nil {
+		return err
+	}
 
 	return nil
 }
