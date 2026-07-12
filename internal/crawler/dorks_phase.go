@@ -37,7 +37,7 @@ func (e *Engine) generateDorks(domains []string) string {
 			Parameters: parameters,
 		}
 
-		msg := "[Phase 4] Dorks for " + host
+		msg := "[Phase 4] Dorks (sites similaires, TLD " + tld + ") depuis " + host
 		e.log(msg)
 		preview := dorks.Preview(opts, 8)
 		previews = append(previews, preview)

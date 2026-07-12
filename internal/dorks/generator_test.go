@@ -5,6 +5,35 @@ import (
 	"testing"
 )
 
+func TestNoSeedHostInDorks(t *testing.T) {
+	g := New()
+	seed := "victim-secret-shop.com"
+	out := g.Generate(Options{
+		Host:       seed,
+		TLD:        ".com",
+		Keywords:   []string{"admin", "catalog"},
+		Parameters: []string{"id", "cat"},
+	})
+	if len(out) == 0 {
+		t.Fatal("expected dorks")
+	}
+	for _, d := range out {
+		if strings.Contains(d, seed) {
+			t.Fatalf("dork must not reference crawled host: %s", d)
+		}
+	}
+	foundTLD := false
+	for _, d := range out {
+		if strings.Contains(d, "site:*.com") {
+			foundTLD = true
+			break
+		}
+	}
+	if !foundTLD {
+		t.Fatal("expected TLD-scoped dorks for similar-site discovery")
+	}
+}
+
 func TestGenerateDorksMatrix(t *testing.T) {
 	g := New()
 	out := g.Generate(Options{
