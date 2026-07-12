@@ -24,6 +24,7 @@ var excludeRules = []excludeRule{
 	{regexp.MustCompile(`(?i)^(ajax|jsonp|callback|format|output|response_type|dataType)$`), 32, "response format parameter"},
 	{regexp.MustCompile(`(?i)^(img|image|icon|logo|avatar|thumb|thumbnail|banner|photo|pic|src_img)$`), 30, "media asset parameter"},
 	{regexp.MustCompile(`(?i)^(css|js|script|style|font|woff|asset|bundle|chunk)$`), 28, "static asset parameter"},
+	{regexp.MustCompile(`(?i)^(sidebar|sidebars|widget|widgets|menu_id|nav_id|block_id|module_id|plugin|plugins|theme_mod|customize_messenger_channel)$`), 18, "CMS/layout parameter"},
 	{regexp.MustCompile(`(?i)^(fb|twitter|linkedin|share|social|utm|tracking|track|pixel|beacon)$`), 18, "social/tracking parameter"},
 }
 

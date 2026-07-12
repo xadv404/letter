@@ -2,11 +2,9 @@ package params
 
 import "strings"
 
-// highExact maps exact parameter names to SQLi relevance scores (≥85).
+// HIGH (≥85): classically injectable parameters.
 var highExact = map[string]int{
-	"id": 95, "search_term": 94, "filter_by": 93, "sort": 92,
-	"search": 90, "query": 90, "q": 88, "filter": 88,
-	"sort_by": 87, "orderby": 87, "order_by": 87,
+	"id": 95, "search_term": 94, "filter_by": 93,
 	"user_id": 91, "product_id": 91, "item_id": 90, "order_id": 90,
 	"category_id": 89, "article_id": 89, "page_id": 88, "catid": 88, "cat_id": 88,
 	"pid": 86, "uid": 86, "nid": 86, "gid": 85, "tid": 85,
@@ -22,6 +20,17 @@ var highSuffixes = []struct {
 	{"_code", 85},
 }
 
+// LOW (50–64): less probable injection points (excluded by default threshold 65).
+var lowExact = map[string]int{
+	"page": 58, "sort": 56, "category": 58, "cat": 55, "order": 60,
+	"limit": 58, "offset": 58, "start": 55, "end": 55,
+	"a": 52, "b": 52, "c": 52, "p": 54, "n": 54, "x": 52, "y": 52,
+	"val": 58, "value": 60, "data": 58, "obj": 55, "key": 58,
+	"arg": 55, "param": 56, "input": 58, "output": 56,
+	"no": 55, "nr": 55, "num": 62, "idx": 62,
+}
+
+// mediumPatterns: fuzzy SQLi-relevant fragments (65–84).
 var mediumPatterns = []struct {
 	contains string
 	score    int
@@ -43,18 +52,7 @@ var mediumPatterns = []struct {
 	{"account", 73, "contains account fragment"},
 	{"invoice", 72, "contains invoice fragment"},
 	{"report", 71, "contains report fragment"},
-	{"sort", 70, "contains sort fragment"},
-	{"filter", 70, "contains filter fragment"},
 	{"search", 72, "contains search fragment"},
-	{"cat", 68, "contains cat fragment"},
-	{"page", 68, "contains page fragment"},
-}
-
-var lowExact = map[string]int{
-	"a": 52, "b": 52, "c": 52, "p": 54, "n": 54, "x": 52, "y": 52,
-	"val": 58, "value": 60, "data": 58, "obj": 55, "key": 58,
-	"arg": 55, "param": 56, "input": 58, "output": 56,
-	"no": 55, "nr": 55, "num": 62, "idx": 62,
 }
 
 func scoreHighExact(name string) (int, bool) {
@@ -92,7 +90,7 @@ func scoreLowExact(name string) (int, bool) {
 	if s, ok := lowExact[name]; ok {
 		return s, true
 	}
-	if len(name) <= 2 {
+	if len(name) == 1 {
 		return 52, true
 	}
 	return 0, false

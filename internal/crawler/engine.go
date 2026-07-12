@@ -120,6 +120,8 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 	wg.Wait()
 
 	close(monitorDone)
+
+	fmt.Println("\n=== Phase 4/4 — Google Dork generation ===")
 	e.generateDorks(domains)
 	return e.exporter.Close()
 }
@@ -148,6 +150,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		return
 	}
 	hostKey := u.Host
+	fmt.Printf("[Phase 1] Crawling %s\n", hostKey)
 	progress := e.state.Get(hostKey)
 	if progress.Finished {
 		return
@@ -206,6 +209,8 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		}
 		pages++
 
+		_ = e.exporter.WriteURL(hostKey, rawURL)
+
 		doc, err := html.Parse(strings.NewReader(body))
 		if err == nil {
 			for _, kr := range e.kw.Extract(hostKey, doc) {
@@ -235,6 +240,10 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 
 	e.dashboard.UpdateDomain(hostKey, pages, errors, true)
 	e.persist(hostKey, pages, errors, true, visited, queue)
+
+	for _, flagged := range e.scorer.FlaggedURLs(hostKey) {
+		_ = e.exporter.WriteTarget(flagged.Domain, flagged.URL, flagged.HighParams, flagged.MaxScore)
+	}
 }
 
 func (e *Engine) fetch(ctx context.Context, rawURL string) (string, []string, error) {
@@ -346,36 +355,6 @@ func (e *Engine) persist(host string, pages, errors int, finished bool, visited 
 		p.Visited = vis
 		p.Queue = append([]string{}, queue...)
 	})
-}
-
-func (e *Engine) generateDorks(domains []string) {
-	for _, domain := range domains {
-		u, err := url.Parse(domain)
-		if err != nil {
-			continue
-		}
-		host := u.Host
-		top := e.kw.TopForDomain(host, 50)
-		kws := make([]string, 0, len(top))
-		for _, r := range top {
-			kws = append(kws, r.Keyword)
-		}
-		prms := make([]string, 0, 50)
-		for _, pr := range e.scorer.TopForDomain(host, 50) {
-			prms = append(prms, pr.Name)
-		}
-		if len(kws) == 0 {
-			kws = []string{"admin", "login"}
-		}
-		if len(prms) == 0 {
-			prms = []string{"id", "search", "page"}
-		}
-		preview := dorks.Preview(host, kws, prms, 5)
-		fmt.Println(preview)
-		for _, dork := range e.dorks.Generate(host, kws, prms, 0) {
-			_ = e.exporter.WriteDork(dork)
-		}
-	}
 }
 
 func countGoroutines() int {

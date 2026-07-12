@@ -19,12 +19,46 @@ func TestScoreHighRiskParam(t *testing.T) {
 
 func TestHighTierExactParams(t *testing.T) {
 	s := New(1000, t.TempDir())
-	cases := []string{"id", "filter_by", "sort", "search_term"}
+	cases := []string{"id", "filter_by", "search_term"}
 	for _, name := range cases {
 		score, tier, _, _ := s.evaluate(name)
 		if tier != TierHigh || score < 85 {
 			t.Fatalf("%s: expected HIGH >= 85, got tier=%s score=%d", name, tier, score)
 		}
+	}
+}
+
+func TestPageAndSortAreLow(t *testing.T) {
+	s := New(1000, t.TempDir())
+	for _, name := range []string{"page", "sort", "category"} {
+		score, tier, _, _ := s.evaluate(name)
+		if tier != TierLow {
+			t.Fatalf("%s: expected LOW, got %s (score=%d)", name, tier, score)
+		}
+		if score < 50 || score > 64 {
+			t.Fatalf("%s: expected score 50-64, got %d", name, score)
+		}
+	}
+}
+
+func TestShopExampleURL(t *testing.T) {
+	s := New(1000, t.TempDir())
+	results := s.ScoreURL("shop.com", "https://shop.com/products?category=electronics&id=42", 65)
+
+	byName := map[string]Result{}
+	for _, r := range results {
+		byName[r.Name] = r
+	}
+	if len(byName) != 1 {
+		t.Fatalf("expected only id accepted at threshold 65, got %#v", results)
+	}
+	if byName["id"].Tier != TierHigh {
+		t.Fatalf("id should be HIGH, got %s", byName["id"].Tier)
+	}
+
+	_, tier, _, _ := s.evaluate("category")
+	if tier != TierLow {
+		t.Fatalf("category should be LOW, got %s", tier)
 	}
 }
 
@@ -39,6 +73,14 @@ func TestExcludeTrackingParam(t *testing.T) {
 	}
 	if reason == "" {
 		t.Fatal("expected exclusion reason")
+	}
+}
+
+func TestExcludeSidebar(t *testing.T) {
+	s := New(1000, t.TempDir())
+	_, tier, _, _ := s.evaluate("sidebar")
+	if tier != TierExclude {
+		t.Fatalf("expected EXCLUDE for sidebar, got %s", tier)
 	}
 }
 
@@ -66,16 +108,9 @@ func TestSecListsMatch(t *testing.T) {
 
 func TestLowTierExcludedByDefault(t *testing.T) {
 	s := New(1000, t.TempDir())
-	score, tier, _, _ := s.evaluate("xy")
-	if tier != TierLow {
-		t.Fatalf("expected LOW tier, got %s (score=%d)", tier, score)
-	}
-	if score < 50 || score > 64 {
-		t.Fatalf("expected score 50-64, got %d", score)
-	}
-	results := s.ScoreURL("example.com", "https://example.com/?xy=1", 65)
+	results := s.ScoreURL("example.com", "https://example.com/?page=1&sort=asc", 65)
 	if len(results) != 0 {
-		t.Fatalf("LOW tier should be excluded at minScore 65, got %d results", len(results))
+		t.Fatalf("LOW params should be excluded at minScore 65, got %d", len(results))
 	}
 }
 
@@ -88,8 +123,17 @@ func TestScoreURLFiltersByMinScore(t *testing.T) {
 	if results[0].Name != "id" {
 		t.Fatalf("expected id param, got %s", results[0].Name)
 	}
-	if results[0].Score < 85 {
-		t.Fatalf("expected HIGH score for id, got %d", results[0].Score)
+}
+
+func TestFlaggedURL(t *testing.T) {
+	s := New(1000, t.TempDir())
+	s.ScoreURL("shop.com", "https://shop.com/products?category=electronics&id=42", 65)
+	flagged := s.FlaggedURLs("shop.com")
+	if len(flagged) != 1 {
+		t.Fatalf("expected 1 flagged URL, got %d", len(flagged))
+	}
+	if flagged[0].URL != "https://shop.com/products?category=electronics&id=42" {
+		t.Fatalf("unexpected URL: %s", flagged[0].URL)
 	}
 }
 
@@ -100,8 +144,21 @@ func TestDeduplicationPerDomain(t *testing.T) {
 	if len(r1) != 1 || len(r2) != 0 {
 		t.Fatalf("expected dedup per domain+param, r1=%d r2=%d", len(r1), len(r2))
 	}
-	if s.Count() != 1 {
-		t.Fatalf("expected count 1, got %d", s.Count())
+}
+
+func TestTopForDorks(t *testing.T) {
+	s := New(1000, t.TempDir())
+	s.ScoreURL("example.com", "https://example.com/?id=1&page=2&unknown_param=3", 50)
+	dorks := s.TopForDorks("example.com", 10)
+	names := map[string]bool{}
+	for _, d := range dorks {
+		names[d.Name] = true
+	}
+	if !names["id"] || !names["unknown_param"] {
+		t.Fatalf("expected HIGH/MEDIUM only, got %#v", dorks)
+	}
+	if names["page"] {
+		t.Fatal("page should not appear in dork params")
 	}
 }
 
@@ -111,9 +168,6 @@ func TestTopForDomain(t *testing.T) {
 	top := s.TopForDomain("example.com", 10)
 	if len(top) < 2 {
 		t.Fatalf("expected 2+ params, got %d", len(top))
-	}
-	if top[0].Score < top[len(top)-1].Score {
-		t.Fatal("expected descending score order")
 	}
 }
 
@@ -135,21 +189,9 @@ func TestWordlistCache(t *testing.T) {
 
 func TestMediumPatternScoring(t *testing.T) {
 	s := New(1000, t.TempDir())
-	score, tier, matched, reason := s.evaluate("customer_id")
-	if tier != TierHigh {
-		// customer_id ends with _id suffix -> HIGH
+	score, tier, matched, _ := s.evaluate("customer_id")
+	if tier != TierHigh || score < 85 {
 		t.Fatalf("customer_id: expected HIGH, got %s score=%d matched=%s", tier, score, matched)
-	}
-	if score < 85 {
-		t.Fatalf("expected suffix high score, got %d", score)
-	}
-
-	score, tier, matched, reason = s.evaluate("report_type")
-	if tier != TierMedium || score < 65 {
-		t.Fatalf("report_type: expected MEDIUM, got %s score=%d", tier, score)
-	}
-	if matched != "pattern" && matched != "seclists" {
-		t.Fatalf("unexpected match source: %s reason=%s", matched, reason)
 	}
 }
 

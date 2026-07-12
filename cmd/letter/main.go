@@ -89,9 +89,13 @@ func main() {
 		cancel()
 	}()
 
-	fmt.Printf("Letter Recon — crawling %d domain(s)\n", len(cfg.Domains))
-	fmt.Printf("Config: depth=%d pages=%d workers=%d delay=%dms output=%s\n\n",
-		cfg.Depth, cfg.PageLimit, cfg.Workers, cfg.DelayMS, cfg.OutputDir)
+	fmt.Printf("Letter Recon — 4-phase recon pipeline\n")
+	fmt.Printf("  Phase 1: Crawl → urls_*.txt\n")
+	fmt.Printf("  Phase 2: Keywords → keywords_*.txt\n")
+	fmt.Printf("  Phase 3: SQLi scoring → parameters_*.txt + targets_*.txt\n")
+	fmt.Printf("  Phase 4: Dorks → dorks.txt\n\n")
+	fmt.Printf("Crawling %d domain(s) — depth=%d pages=%d workers=%d delay=%dms output=%s\n\n",
+		len(cfg.Domains), cfg.Depth, cfg.PageLimit, cfg.Workers, cfg.DelayMS, cfg.OutputDir)
 
 	if err := engine.Run(ctx, cfg.Domains); err != nil {
 		exitErr("crawl failed: %v", err)

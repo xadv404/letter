@@ -15,6 +15,8 @@ const (
 	TierExclude Tier = "EXCLUDE" // score < 50
 )
 
+const MinDorkScore = 65 // HIGH + MEDIUM only for dork generation
+
 type Result struct {
 	Domain  string
 	URL     string
@@ -22,6 +24,13 @@ type Result struct {
 	Score   int
 	Tier    Tier
 	Matched string
+}
+
+type FlaggedURL struct {
+	Domain     string
+	URL        string
+	HighParams []string
+	MaxScore   int
 }
 
 type FilterDecision struct {
@@ -33,26 +42,27 @@ type FilterDecision struct {
 }
 
 type Scorer struct {
-	mu       sync.Mutex
-	seclists map[string]struct{}
-	maxCount int
-	count    int
-	seen     map[string]struct{}
-	decisions []FilterDecision
-	stats    struct {
+	mu          sync.Mutex
+	seclists    map[string]struct{}
+	maxCount    int
+	count       int
+	seen        map[string]struct{}
+	decisions   []FilterDecision
+	stats       struct {
 		Accepted int
 		Rejected int
 	}
-	domainHits map[string]map[string]int
+	domainHits  map[string]map[string]int
+	flaggedURLs map[string]map[string]*FlaggedURL
 }
 
-// New creates a scorer. cacheDir enables the 7-day SecLists wordlist cache.
 func New(maxCount int, cacheDir string) *Scorer {
 	return &Scorer{
-		seclists:   LoadWordlist(cacheDir),
-		maxCount:   maxCount,
-		seen:       map[string]struct{}{},
-		domainHits: map[string]map[string]int{},
+		seclists:    LoadWordlist(cacheDir),
+		maxCount:    maxCount,
+		seen:        map[string]struct{}{},
+		domainHits:  map[string]map[string]int{},
+		flaggedURLs: map[string]map[string]*FlaggedURL{},
 	}
 }
 
@@ -69,21 +79,32 @@ func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 	}
 
 	var out []Result
+	var highParams []string
+	maxScore := 0
+
 	for name := range vals {
 		if s.count >= s.maxCount {
 			break
 		}
 		key := domain + "\x00" + name
 		s.mu.Lock()
+		already := false
 		if _, dup := s.seen[key]; dup {
-			s.mu.Unlock()
-			continue
+			already = true
+			if sc, ok := s.domainHits[domain][name]; ok && sc >= 85 {
+				highParams = appendUnique(highParams, name)
+				if sc > maxScore {
+					maxScore = sc
+				}
+			}
 		}
 		s.mu.Unlock()
+		if already {
+			continue
+		}
 
 		score, tier, matched, reason := s.evaluate(name)
 		accepted := score >= minScore
-
 		s.recordDecision(name, score, tier, accepted, reason)
 
 		if !accepted {
@@ -99,6 +120,13 @@ func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 		s.domainHits[domain][name] = score
 		s.mu.Unlock()
 
+		if score > maxScore {
+			maxScore = score
+		}
+		if tier == TierHigh {
+			highParams = appendUnique(highParams, name)
+		}
+
 		out = append(out, Result{
 			Domain:  domain,
 			URL:     rawURL,
@@ -108,7 +136,31 @@ func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 			Matched: matched,
 		})
 	}
+
+	if len(highParams) > 0 {
+		s.flagURL(domain, rawURL, highParams, maxScore)
+	}
 	return out
+}
+
+func (s *Scorer) flagURL(domain, rawURL string, highParams []string, maxScore int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.flaggedURLs[domain] == nil {
+		s.flaggedURLs[domain] = map[string]*FlaggedURL{}
+	}
+	existing := s.flaggedURLs[domain][rawURL]
+	if existing == nil {
+		existing = &FlaggedURL{Domain: domain, URL: rawURL, HighParams: highParams, MaxScore: maxScore}
+		s.flaggedURLs[domain][rawURL] = existing
+		return
+	}
+	for _, p := range highParams {
+		existing.HighParams = appendUnique(existing.HighParams, p)
+	}
+	if maxScore > existing.MaxScore {
+		existing.MaxScore = maxScore
+	}
 }
 
 func (s *Scorer) evaluate(name string) (score int, tier Tier, matched, reason string) {
@@ -117,37 +169,32 @@ func (s *Scorer) evaluate(name string) (score int, tier Tier, matched, reason st
 		return 0, TierExclude, "empty", "empty parameter name"
 	}
 
-	// Tier 1: exclusions (<50)
 	if exScore, exReason, ok := matchExclude(lower); ok {
 		return exScore, TierExclude, "exclude_rule", exReason
 	}
 
-	// Tier 3: HIGH (≥85) — exact names and suffixes
+	// LOW before SecLists — page/sort/category stay weak even if in wordlist.
+	if sc, ok := scoreLowExact(lower); ok {
+		return sc, TierLow, "weak", "weak pagination/sort/CMS-like parameter"
+	}
+
 	if sc, ok := scoreHighExact(lower); ok {
-		return sc, TierHigh, "high_exact", "high-risk SQLi parameter (exact match)"
+		return sc, TierHigh, "high_exact", "classically injectable SQLi parameter"
 	}
 	if sc, ok := scoreHighSuffix(lower); ok {
 		return sc, TierHigh, "high_suffix", "high-risk SQLi parameter (id/num suffix)"
 	}
 
-	// SecLists Burp wordlist verification → MEDIUM-HIGH
 	if _, ok := s.seclists[lower]; ok {
-		return 82, TierMedium, "seclists", "verified against SecLists Burp parameter wordlist"
+		return 78, TierMedium, "seclists", "verified against SecLists Burp parameter wordlist"
 	}
 
-	// Pattern-based MEDIUM
 	if sc, patReason, ok := scoreMediumPattern(lower); ok {
 		return sc, scoreToTier(sc), "pattern", patReason
 	}
 
-	// Unknown but plausible alphanumeric → MEDIUM baseline
 	if isPlausibleParam(lower) {
 		return 68, TierMedium, "unknown", "unknown parameter — plausible SQLi candidate"
-	}
-
-	// LOW tier weak matches
-	if sc, ok := scoreLowExact(lower); ok {
-		return sc, TierLow, "weak", "weak/generic parameter name"
 	}
 
 	return 45, TierExclude, "noise", "no SQLi relevance detected"
@@ -176,6 +223,15 @@ func isPlausibleParam(name string) bool {
 		}
 	}
 	return true
+}
+
+func appendUnique(slice []string, val string) []string {
+	for _, s := range slice {
+		if s == val {
+			return slice
+		}
+	}
+	return append(slice, val)
 }
 
 func (s *Scorer) recordDecision(param string, score int, tier Tier, accepted bool, reason string) {
@@ -214,8 +270,16 @@ func (s *Scorer) Count() int {
 	return s.count
 }
 
-// TopForDomain returns highest-scored unique parameters for a domain.
 func (s *Scorer) TopForDomain(domain string, limit int) []Result {
+	return s.topForDomain(domain, limit, 0)
+}
+
+// TopForDorks returns HIGH + MEDIUM parameters (score ≥ minDorkScore).
+func (s *Scorer) TopForDorks(domain string, limit int) []Result {
+	return s.topForDomain(domain, limit, MinDorkScore)
+}
+
+func (s *Scorer) topForDomain(domain string, limit, minScore int) []Result {
 	s.mu.Lock()
 	hits := s.domainHits[domain]
 	s.mu.Unlock()
@@ -229,6 +293,9 @@ func (s *Scorer) TopForDomain(domain string, limit int) []Result {
 	}
 	arr := make([]kv, 0, len(hits))
 	for name, score := range hits {
+		if minScore > 0 && score < minScore {
+			continue
+		}
 		arr = append(arr, kv{name, score})
 	}
 	for i := 0; i < len(arr); i++ {
@@ -248,6 +315,32 @@ func (s *Scorer) TopForDomain(domain string, limit int) []Result {
 			Name:   item.name,
 			Score:  item.score,
 			Tier:   scoreToTier(item.score),
+		}
+	}
+	return out
+}
+
+func (s *Scorer) FlaggedURLs(domain string) []FlaggedURL {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.flaggedURLs[domain]
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]FlaggedURL, 0, len(m))
+	for _, f := range m {
+		out = append(out, *f)
+	}
+	return out
+}
+
+func (s *Scorer) AllFlaggedURLs() []FlaggedURL {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []FlaggedURL
+	for _, m := range s.flaggedURLs {
+		for _, f := range m {
+			out = append(out, *f)
 		}
 	}
 	return out
