@@ -36,14 +36,6 @@
     document.getElementById("stat-cpu").textContent = s.cpu != null ? s.cpu.toFixed(1) + "%" : "—";
     document.getElementById("stat-ram").textContent = (s.ram != null ? s.ram.toFixed(1) + "% RAM" : "") + " · " + (s.throttle || "NORMAL");
 
-    document.querySelectorAll(".pipeline-step").forEach(function (el) {
-      var p = parseInt(el.getAttribute("data-phase"), 10);
-      el.classList.remove("done", "active");
-      if (s.phase > p) el.classList.add("done");
-      else if (s.phase === p && s.running) el.classList.add("active");
-      else if (s.phase === p && !s.running && p === 4) el.classList.add("done");
-    });
-
     if (s.dork_preview) dorkPreview.textContent = s.dork_preview;
     if (s.domain_file) domainLabel.textContent = "Fichier : " + s.domain_file;
 

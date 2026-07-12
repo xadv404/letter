@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/layout.css" />
   <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/icons.css" />
 </head>
 <body>
   <div class="ambient"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="grid-bg"></div></div>
@@ -20,18 +21,18 @@
       <nav class="sidebar-nav">
         <div class="nav-category">
           <div class="nav-category-label">Général</div>
-          <a href="index.html" class="nav-link"><span class="icon">◉</span> Dashboard</a>
+          <a href="index.html" class="nav-link"><span class="icon"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-dashboard"/></svg></span> Dashboard</a>
         </div>
         <div class="nav-category">
           <div class="nav-category-label">Settings</div>
-          <a href="settings.html" class="nav-link"><span class="icon">⚙️</span> Configuration</a>
+          <a href="settings.html" class="nav-link"><span class="icon"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-settings"/></svg></span> Configuration</a>
         </div>
       </nav>
     </aside>
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="menu-toggle" type="button" aria-label="Menu">☰</button>
+          <button class="menu-toggle" type="button" aria-label="Menu"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-menu"/></svg></button>
           <div><div class="page-title">Configuration</div><div class="page-subtitle">Settings</div></div>
         </div>
         <div class="topbar-badge"><span class="dot"></span> GUI native</div>
@@ -39,7 +40,7 @@
       <div class="content">
         <div class="content-header">
           <h1>Paramètres</h1>
-          <p>Réglages du pipeline — sauvegardés localement dans l'application.</p>
+          <p>Réglages sauvegardés localement dans l'application.</p>
         </div>
 
         <form id="settings-form">
@@ -55,7 +56,7 @@
             </div>
           </div>
           <div class="settings-section">
-            <div class="settings-section-header"><h2>SQLi & export</h2><p>Phases 3–4</p></div>
+            <div class="settings-section-header"><h2>SQLi & export</h2><p>Scoring et dorks</p></div>
             <div class="settings-body">
               <div class="field-row">
                 <div class="field"><label for="minscore">Score minimum</label><input id="minscore" name="min_param_score" type="number" min="50" max="100" /></div>
@@ -64,8 +65,8 @@
             </div>
           </div>
           <div class="btn-row">
-            <button class="btn-ctrl primary" type="submit">💾 Enregistrer</button>
-            <span id="save-msg" style="color:var(--emerald);font-size:0.85rem;align-self:center"></span>
+            <button class="btn-ctrl primary" type="submit"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-save"/></svg> Enregistrer</button>
+            <span id="save-msg" class="save-msg"></span>
           </div>
         </form>
       </div>
@@ -92,8 +93,9 @@
         output_dir: document.getElementById("output").value,
       };
       LetterAPI.putConfig(cfg).then(function () {
-        document.getElementById("save-msg").textContent = "Enregistré ✓";
-        setTimeout(function () { document.getElementById("save-msg").textContent = ""; }, 2500);
+        var msg = document.getElementById("save-msg");
+        msg.innerHTML = '<span class="save-ok"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-check"/></svg> Enregistré</span>';
+        setTimeout(function () { msg.innerHTML = ""; }, 2500);
       }).catch(function (err) { alert(err.message); });
     });
   </script>
