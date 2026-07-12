@@ -1,6 +1,9 @@
 package dorks
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestGenerateURLVolumeCount(t *testing.T) {
 	set := GenerateURLVolume([]string{"order_id", "news_id"})
@@ -12,7 +15,7 @@ func TestGenerateURLVolumeCount(t *testing.T) {
 func TestURLVolumeDorksAreBroad(t *testing.T) {
 	set := GenerateURLVolume(nil)
 	for _, d := range set.All {
-		if stringsContains(d, "intext:") {
+		if strings.Contains(d, "intext:") {
 			t.Fatalf("volume dork must not use intext: %s", d)
 		}
 		if countInurl(d) > 1 {
@@ -45,19 +48,6 @@ func TestCrawledParamsInjected(t *testing.T) {
 	if !found {
 		t.Fatal("expected crawled invoice_id in volume dorks")
 	}
-}
-
-func stringsContains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || findSub(s, sub))
-}
-
-func findSub(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
 
 func countInurl(d string) int {

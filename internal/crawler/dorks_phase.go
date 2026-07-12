@@ -40,7 +40,6 @@ func (e *Engine) generateDorks(domains []string) string {
 		}
 	}
 
-	// Session-wide ranked keywords (intelligence layer).
 	for _, r := range e.kw.Top(50) {
 		fp.AddTerm(r.Keyword)
 		kwList = append(kwList, r.Keyword)
@@ -75,6 +74,7 @@ func (e *Engine) generateDorks(domains []string) string {
 	}
 
 	materials := dorks.PrepareMaterials(*fp, kwList, phList)
+	assembled := dorks.Assemble(materials)
 
 	if err := e.exporter.WriteMaterials(materials); err != nil {
 		e.log("[Phase 4] Erreur export: " + err.Error())
@@ -82,15 +82,15 @@ func (e *Engine) generateDorks(domains []string) string {
 	}
 
 	e.log(fmt.Sprintf(
-		"[Phase 4] %d dorktypes | %d keywords | %d params — combine externally",
-		len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params),
+		"[Phase 4] %d dorks auto-assemblés | %d types | %d keywords | %d params",
+		len(assembled), len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params),
 	))
-	preview := dorks.PreviewMaterials(materials)
+	preview := dorks.PreviewAssembled(materials, 12)
 	e.log(preview)
 	return strings.Join([]string{
-		fmt.Sprintf("dorktypes.txt: %d patterns ({param} {kw} {path})", len(materials.Types)),
-		fmt.Sprintf("keywords.txt: %d keywords + %d phrases", len(materials.Keywords), len(materials.Phrases)),
-		fmt.Sprintf("params.txt: %d params + %d paths", len(materials.Params), len(materials.Paths)),
+		fmt.Sprintf("dorks.txt: %d requêtes prêtes (types × kw × params)", len(assembled)),
+		fmt.Sprintf("dorktypes.txt: %d | keywords.txt: %d | params.txt: %d",
+			len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params)),
 		preview,
 	}, "\n")
 }

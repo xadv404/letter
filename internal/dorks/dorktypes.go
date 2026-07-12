@@ -111,7 +111,7 @@ func PreviewMaterials(m Materials) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Dork types: %d | Keywords: %d | Phrases: %d | Params: %d | Paths: %d\n",
 		len(m.Types), len(m.Keywords), len(m.Phrases), len(m.Params), len(m.Paths))
-	b.WriteString("Combine: type × keyword × param (externally)\n")
+	b.WriteString("Auto-assemble: types × keywords × params → dorks.txt\n")
 	b.WriteString("Example types:\n")
 	for i, t := range m.Types {
 		if i >= 5 {
