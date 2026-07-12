@@ -141,29 +141,22 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 	e.dashboard.Reset()
 	e.setPhase(1, "Phase 1/4 — Crawling")
 
-	domainCh := make(chan string)
-	var wg sync.WaitGroup
-	workerCount := e.cfg.Workers
-
-	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for domain := range domainCh {
-				e.crawlDomain(ctx, domain)
-			}
-		}()
-	}
-
 	monitorDone := make(chan struct{})
 	go e.monitorLoop(monitorDone)
 
 	for _, d := range domains {
 		e.dashboard.Ensure(d)
-		domainCh <- d
+		select {
+		case <-ctx.Done():
+			close(monitorDone)
+			return ctx.Err()
+		case <-e.stopCh:
+			close(monitorDone)
+			return nil
+		default:
+			e.crawlDomain(ctx, d)
+		}
 	}
-	close(domainCh)
-	wg.Wait()
 
 	close(monitorDone)
 
@@ -214,13 +207,28 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		return
 	}
 
-	queue := append([]string{}, progress.Queue...)
+	queue := make([]string, 0, len(progress.Queue)+1)
 	visited := map[string]bool{}
+	queued := map[string]bool{}
 	for _, v := range progress.Visited {
-		visited[v] = true
+		c := canonicalURL(v)
+		visited[c] = true
+		queued[c] = true
 	}
-	if len(queue) == 0 {
-		queue = append(queue, seed)
+	for _, raw := range progress.Queue {
+		c := canonicalURL(raw)
+		if visited[c] || queued[c] {
+			continue
+		}
+		queued[c] = true
+		queue = append(queue, c)
+	}
+	if len(queue) == 0 && !progress.Finished {
+		seedURL := canonicalURL(seed)
+		if !visited[seedURL] && !queued[seedURL] {
+			queued[seedURL] = true
+			queue = append(queue, seedURL)
+		}
 	}
 
 	pages := progress.Pages
@@ -247,6 +255,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 
 		rawURL := queue[0]
 		queue = queue[1:]
+		delete(queued, rawURL)
 		if visited[rawURL] {
 			continue
 		}
@@ -277,7 +286,9 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		}
 
 		for _, link := range links {
-			if sameHost(u, link) && !visited[link] {
+			link = canonicalURL(link)
+			if sameHost(u, link) && !visited[link] && !queued[link] {
+				queued[link] = true
 				queue = append(queue, link)
 			}
 			if scored := e.scorer.ScoreURL(hostKey, link, e.cfg.MinParamScore); len(scored) > 0 {
@@ -359,7 +370,8 @@ func resolve(base *url.URL, href string) string {
 		return ""
 	}
 	u.Fragment = ""
-	return u.String()
+	s := canonicalURL(u.String())
+	return s
 }
 
 func sameHost(seed *url.URL, raw string) bool {
