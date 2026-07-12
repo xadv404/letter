@@ -40,9 +40,8 @@ type Engine struct {
 	resumeCh chan struct{}
 	stopCh   chan struct{}
 
-	domainKeywords map[string][]string
-	domainParams   map[string][]string
-	dataMu         sync.Mutex
+	domainParams map[string][]string
+	dataMu       sync.Mutex
 }
 
 func New(cfg config.CrawlConfig) (*Engine, error) {
@@ -69,9 +68,8 @@ func New(cfg config.CrawlConfig) (*Engine, error) {
 		client:         &http.Client{Timeout: 15 * time.Second},
 		pauseCh:        make(chan struct{}, 1),
 		resumeCh:       make(chan struct{}, 1),
-		stopCh:         make(chan struct{}),
-		domainKeywords: map[string][]string{},
-		domainParams:   map[string][]string{},
+		stopCh:       make(chan struct{}),
+		domainParams: map[string][]string{},
 	}, nil
 }
 
@@ -215,8 +213,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		doc, err := html.Parse(strings.NewReader(body))
 		if err == nil {
 			for _, kr := range e.kw.Extract(hostKey, doc) {
-				_ = e.exporter.WriteKeyword(kr.Domain, kr.Keyword, kr.Weight)
-				e.trackKeyword(hostKey, kr.Keyword)
+				_ = e.exporter.WriteKeyword(kr.Domain, kr.Keyword, kr.Weight, kr.Source)
 				e.dashboard.AddKeywords(1)
 			}
 		}
@@ -357,12 +354,6 @@ func (e *Engine) persist(host string, pages, errors int, finished bool, visited 
 	})
 }
 
-func (e *Engine) trackKeyword(domain, kw string) {
-	e.dataMu.Lock()
-	defer e.dataMu.Unlock()
-	e.domainKeywords[domain] = appendUnique(e.domainKeywords[domain], kw, 50)
-}
-
 func (e *Engine) trackParam(domain, param string) {
 	e.dataMu.Lock()
 	defer e.dataMu.Unlock()
@@ -389,8 +380,12 @@ func (e *Engine) generateDorks(domains []string) {
 			continue
 		}
 		host := u.Host
+		top := e.kw.TopForDomain(host, 50)
+		kws := make([]string, 0, len(top))
+		for _, r := range top {
+			kws = append(kws, r.Keyword)
+		}
 		e.dataMu.Lock()
-		kws := append([]string{}, e.domainKeywords[host]...)
 		prms := append([]string{}, e.domainParams[host]...)
 		e.dataMu.Unlock()
 		if len(kws) == 0 {

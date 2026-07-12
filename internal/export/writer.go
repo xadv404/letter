@@ -60,10 +60,10 @@ func New(outputDir string) (*Writer, error) {
 	}, nil
 }
 
-func (w *Writer) WriteKeyword(domain, keyword string, weight int) error {
+func (w *Writer) WriteKeyword(domain, keyword string, weight int, source string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if _, err := fmt.Fprintf(w.kwWriter, "%s\t%s\t%d\n", domain, keyword, weight); err != nil {
+	if _, err := fmt.Fprintf(w.kwWriter, "%s\t%s\t%d\t%s\n", domain, keyword, weight, source); err != nil {
 		return err
 	}
 	return w.maybeFlush()

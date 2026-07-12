@@ -1,6 +1,7 @@
 package keywords
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 
@@ -13,121 +14,241 @@ var tagWeights = map[string]int{
 	"p": 1, "li": 1, "span": 1,
 }
 
-type Extractor struct {
-	stopwords map[string]struct{}
-	technical map[string]struct{}
-	maxCount  int
-	seen      map[string]int
-}
-
-func New(maxCount int) *Extractor {
-	return &Extractor{
-		stopwords: buildStopwords(),
-		technical: buildTechnical(),
-		maxCount:  maxCount,
-		seen:      map[string]int{},
-	}
-}
-
-func (e *Extractor) Extract(domain string, doc *html.Node) []Result {
-	var results []Result
-	var walk func(*html.Node, int)
-	walk = func(n *html.Node, weight int) {
-		if n.Type == html.ElementNode {
-			if w, ok := tagWeights[n.Data]; ok {
-				weight = w
-			}
-			if weight > 0 && n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
-				text := clean(n.FirstChild.Data)
-				for _, token := range tokenize(text) {
-					if e.accept(token) {
-						e.seen[token] += weight
-						results = append(results, Result{Domain: domain, Keyword: token, Weight: weight})
-					}
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c, weight)
-		}
-	}
-	walk(doc, 0)
-
-	// multi-word pairs from accumulated tokens
-	tokens := e.topTokens(50)
-	for i := 0; i < len(tokens); i++ {
-		for j := i + 1; j < len(tokens) && j < i+4; j++ {
-			pair := tokens[i] + " " + tokens[j]
-			if len(pair) >= 2 && len(pair) <= 100 && e.acceptPair(tokens[i], tokens[j]) {
-				results = append(results, Result{Domain: domain, Keyword: pair, Weight: 2})
-			}
-		}
-	}
-
-	if len(results) > e.maxCount {
-		results = results[:e.maxCount]
-	}
-	return results
-}
-
-func (e *Extractor) Count() int { return len(e.seen) }
-
+// Result is a scored keyword discovered during extraction.
 type Result struct {
 	Domain  string
 	Keyword string
 	Weight  int
+	Source  string // token, bigram, trigram, heading
 }
 
-func (e *Extractor) accept(word string) bool {
-	if len(word) < 2 || len(word) > 100 {
-		return false
-	}
-	if _, ok := e.stopwords[word]; ok {
-		return false
-	}
-	if _, ok := e.technical[word]; ok {
-		return false
-	}
-	if _, seen := e.seen[word]; seen && e.seen[word] > 0 {
-		return false
-	}
-	return true
+type block struct {
+	tag    string
+	weight int
+	text   string
 }
 
-func (e *Extractor) acceptPair(a, b string) bool {
-	return e.accept(a) || e.accept(b)
+// Extractor performs weighted, context-aware keyword extraction across a crawl session.
+type Extractor struct {
+	filter     *Filter
+	maxSession int
+
+	scores        map[string]int
+	domainScores  map[string]map[string]int
+	emitted       map[string]int
+	sessionLen    int
 }
 
-func (e *Extractor) topTokens(limit int) []string {
-	type kv struct {
-		k string
-		v int
+func New(maxCount int) *Extractor {
+	return &Extractor{
+		filter:     NewFilter(),
+		maxSession: maxCount,
+		scores:       map[string]int{},
+		domainScores: map[string]map[string]int{},
+		emitted:      map[string]int{},
 	}
-	arr := make([]kv, 0, len(e.seen))
-	for k, v := range e.seen {
-		arr = append(arr, kv{k, v})
+}
+
+func (e *Extractor) Extract(domain string, doc *html.Node) []Result {
+	if e.sessionLen >= e.maxSession {
+		return nil
 	}
-	for i := 0; i < len(arr); i++ {
-		for j := i + 1; j < len(arr); j++ {
-			if arr[j].v > arr[i].v {
-				arr[i], arr[j] = arr[j], arr[i]
+
+	blocks := collectBlocks(doc)
+	candidates := map[string]candidate{}
+
+	for _, blk := range blocks {
+		e.processBlock(blk, candidates)
+	}
+
+	var results []Result
+	for phrase, cand := range candidates {
+		if !e.filter.AcceptPhrase(phrase) && !e.filter.AcceptToken(phrase) {
+			continue
+		}
+		e.scores[phrase] += cand.weight
+		newScore := e.scores[phrase]
+		e.addDomainScore(domain, phrase, cand.weight)
+		if newScore <= e.emitted[phrase] {
+			continue
+		}
+		if e.sessionLen >= e.maxSession {
+			break
+		}
+		e.emitted[phrase] = newScore
+		e.sessionLen++
+		results = append(results, Result{
+			Domain:  domain,
+			Keyword: phrase,
+			Weight:  newScore,
+			Source:  cand.source,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Weight == results[j].Weight {
+			return results[i].Keyword < results[j].Keyword
+		}
+		return results[i].Weight > results[j].Weight
+	})
+	return results
+}
+
+func (e *Extractor) Count() int      { return e.sessionLen }
+func (e *Extractor) Unique() int     { return len(e.scores) }
+func (e *Extractor) Stopwords() int  { return len(e.filter.stopwords) }
+
+type candidate struct {
+	weight int
+	source string
+}
+
+func (e *Extractor) processBlock(blk block, out map[string]candidate) {
+	text := cleanText(blk.text)
+	if text == "" {
+		return
+	}
+
+	tokens := tokenize(text)
+	valid := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		if e.filter.AcceptToken(t) {
+			valid = append(valid, t)
+		}
+	}
+
+	// Full heading phrase — high value for recon.
+	if isHeading(blk.tag) && e.filter.AcceptPhrase(text) {
+		weight := blk.weight * 2
+		mergeCandidate(out, text, weight, "heading")
+	}
+
+	// Single tokens inherit block weight.
+	for _, tok := range valid {
+		mergeCandidate(out, tok, blk.weight, "token")
+	}
+
+	// Adjacent bigrams/trigrams from the same block preserve context.
+	for i := 0; i < len(valid); i++ {
+		if i+1 < len(valid) {
+			bigram := valid[i] + " " + valid[i+1]
+			w := pairWeight(blk.weight, 2)
+			mergeCandidate(out, bigram, w, "bigram")
+		}
+		if i+2 < len(valid) && blk.weight >= 3 {
+			trigram := valid[i] + " " + valid[i+1] + " " + valid[i+2]
+			w := pairWeight(blk.weight, 3)
+			mergeCandidate(out, trigram, w, "trigram")
+		}
+	}
+
+	// Cross-token pairs inside high-weight blocks (headings).
+	if blk.weight >= 3 && len(valid) >= 2 {
+		limit := min(len(valid), 8)
+		for i := 0; i < limit; i++ {
+			for j := i + 1; j < limit && j < i+3; j++ {
+				pair := valid[i] + " " + valid[j]
+				if strings.Contains(pair, " ") {
+					mergeCandidate(out, pair, pairWeight(blk.weight, 2), "pair")
+				}
 			}
 		}
 	}
-	if len(arr) > limit {
-		arr = arr[:limit]
-	}
-	out := make([]string, len(arr))
-	for i, item := range arr {
-		out[i] = item.k
-	}
-	return out
 }
 
-func clean(s string) string {
+func collectBlocks(doc *html.Node) []block {
+	var blocks []block
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			if w, ok := tagWeights[n.Data]; ok {
+				text := deepText(n)
+				if strings.TrimSpace(text) != "" {
+					blocks = append(blocks, block{tag: n.Data, weight: w, text: text})
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	return blocks
+}
+
+func deepText(n *html.Node) string {
+	if n == nil {
+		return ""
+	}
+	if n.Type == html.TextNode {
+		return n.Data
+	}
+	var b strings.Builder
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && isSkippedTag(c.Data) {
+			continue
+		}
+		b.WriteString(deepText(c))
+		if c.Type == html.ElementNode && needsSpace(c.Data) {
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
+}
+
+func isSkippedTag(tag string) bool {
+	switch tag {
+	case "script", "style", "noscript", "svg", "path", "code", "pre":
+		return true
+	default:
+		return false
+	}
+}
+
+func needsSpace(tag string) bool {
+	switch tag {
+	case "p", "li", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6":
+		return true
+	default:
+		return false
+	}
+}
+
+func isHeading(tag string) bool {
+	switch tag {
+	case "h1", "h2", "h3", "h4", "h5", "h6":
+		return true
+	default:
+		return false
+	}
+}
+
+func mergeCandidate(out map[string]candidate, phrase string, weight int, source string) {
+	phrase = strings.Join(strings.Fields(strings.TrimSpace(phrase)), " ")
+	if phrase == "" || len(phrase) < MinKeywordLen || len(phrase) > MaxKeywordLen {
+		return
+	}
+	cur, ok := out[phrase]
+	if !ok || weight > cur.weight {
+		out[phrase] = candidate{weight: weight, source: source}
+	}
+}
+
+func pairWeight(blockWeight, n int) int {
+	if n <= 1 {
+		return blockWeight
+	}
+	w := blockWeight - (n - 1)
+	if w < 1 {
+		return 1
+	}
+	return w
+}
+
+func cleanText(s string) string {
 	s = strings.TrimSpace(strings.ToLower(s))
 	return strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == ' ' {
 			return r
 		}
 		return ' '
@@ -135,48 +256,61 @@ func clean(s string) string {
 }
 
 func tokenize(s string) []string {
-	parts := strings.Fields(s)
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if p != "" {
-			out = append(out, p)
+	return strings.Fields(cleanText(s))
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (e *Extractor) addDomainScore(domain, phrase string, weight int) {
+	if e.domainScores[domain] == nil {
+		e.domainScores[domain] = map[string]int{}
+	}
+	e.domainScores[domain][phrase] += weight
+}
+
+// Top returns the highest-scoring keywords accumulated in the session.
+func (e *Extractor) Top(limit int) []Result {
+	return e.topFrom(e.scores, limit)
+}
+
+// TopForDomain returns top keywords for a specific domain.
+func (e *Extractor) TopForDomain(domain string, limit int) []Result {
+	if e.domainScores[domain] == nil {
+		return nil
+	}
+	results := e.topFrom(e.domainScores[domain], limit)
+	for i := range results {
+		results[i].Domain = domain
+	}
+	return results
+}
+
+func (e *Extractor) topFrom(scores map[string]int, limit int) []Result {
+	type kv struct {
+		k string
+		v int
+	}
+	arr := make([]kv, 0, len(scores))
+	for k, v := range scores {
+		arr = append(arr, kv{k, v})
+	}
+	sort.Slice(arr, func(i, j int) bool {
+		if arr[i].v == arr[j].v {
+			return arr[i].k < arr[j].k
 		}
+		return arr[i].v > arr[j].v
+	})
+	if limit > 0 && len(arr) > limit {
+		arr = arr[:limit]
+	}
+	out := make([]Result, len(arr))
+	for i, item := range arr {
+		out[i] = Result{Keyword: item.k, Weight: item.v}
 	}
 	return out
-}
-
-func buildStopwords() map[string]struct{} {
-	words := []string{
-		"a", "an", "the", "and", "or", "but", "if", "then", "else", "when", "at", "by", "for", "with",
-		"about", "against", "between", "into", "through", "during", "before", "after", "above", "below",
-		"to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", "further",
-		"is", "am", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does",
-		"did", "will", "would", "shall", "should", "can", "could", "may", "might", "must", "not",
-		"this", "that", "these", "those", "i", "you", "he", "she", "it", "we", "they", "me", "him",
-		"her", "us", "them", "my", "your", "his", "its", "our", "their", "what", "which", "who",
-		"whom", "whose", "where", "why", "how", "all", "each", "every", "both", "few", "more",
-		"most", "other", "some", "such", "no", "nor", "only", "own", "same", "so", "than", "too",
-		"very", "just", "also", "now", "here", "there", "once", "get", "got", "go", "going", "gone",
-		"see", "seen", "use", "used", "using", "make", "made", "new", "old", "one", "two", "three",
-		"click", "read", "more", "home", "page", "menu", "search", "login", "logout", "sign", "copyright",
-		"privacy", "policy", "terms", "contact", "email", "phone", "address", "welcome", "learn", "today",
-	}
-	m := make(map[string]struct{}, len(words))
-	for _, w := range words {
-		m[w] = struct{}{}
-	}
-	return m
-}
-
-func buildTechnical() map[string]struct{} {
-	words := []string{
-		"html", "css", "javascript", "json", "xml", "http", "https", "www", "div", "span", "class",
-		"script", "style", "meta", "charset", "utf", "viewport", "jquery", "bootstrap", "webpack",
-		"react", "angular", "vue", "php", "asp", "jsp", "cookie", "session", "token", "csrf",
-	}
-	m := make(map[string]struct{}, len(words))
-	for _, w := range words {
-		m[w] = struct{}{}
-	}
-	return m
 }
