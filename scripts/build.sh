@@ -18,4 +18,4 @@ CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc \
 
 echo ""
 ls -lh "$DIST/letter.exe"
-file "$DIST/letter.exe"
+echo "Upload: gh release create vX.Y.Z dist/letter.exe --generate-notes"
