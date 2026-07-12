@@ -63,9 +63,9 @@ func TestGenerateUnique(t *testing.T) {
 	}
 }
 
-func TestTemplateCountAtLeast20(t *testing.T) {
-	if TemplateCount() < 20 {
-		t.Fatalf("expected 20+ templates, got %d", TemplateCount())
+func TestTemplateCountIs50(t *testing.T) {
+	if n := TemplateCount(); n != 50 {
+		t.Fatalf("expected exactly 50 templates, got %d", n)
 	}
 }
 

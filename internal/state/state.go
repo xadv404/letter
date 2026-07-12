@@ -95,6 +95,15 @@ func (s *Store) Get(domain string) *DomainProgress {
 	return p
 }
 
+func (s *Store) IsFinished(host string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p := s.data.Domains[host]; p != nil {
+		return p.Finished
+	}
+	return false
+}
+
 func (s *Store) ResetDomains(hosts []string) error {
 	s.mu.Lock()
 	for _, h := range hosts {

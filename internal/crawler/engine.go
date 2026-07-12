@@ -142,32 +142,68 @@ func (e *Engine) Stop() {
 func (e *Engine) Run(ctx context.Context, domains []string) error {
 	e.dashboard.Reset()
 
-	hosts := make([]string, 0, len(domains))
+	var todo []string
 	for _, d := range domains {
 		if u, err := url.Parse(d); err == nil && u.Host != "" {
-			hosts = append(hosts, NormalizeHost(u.Host))
+			host := NormalizeHost(u.Host)
+			if e.state.IsFinished(host) {
+				e.log("[Memory] Skip " + host + " (déjà crawlé)")
+				continue
+			}
 		}
+		todo = append(todo, d)
 	}
-	_ = e.state.ResetDomains(hosts)
+	if len(todo) == 0 {
+		e.log("[Memory] Tous les domaines déjà traités — génération dorks uniquement")
+	}
 
 	e.setPhase(1, "Phase 1/4 — Crawling")
 
 	monitorDone := make(chan struct{})
 	go e.monitorLoop(monitorDone)
 
-	for _, d := range domains {
+	domainCh := make(chan string)
+	var wg sync.WaitGroup
+	workers := e.cfg.Workers
+	if workers < 1 {
+		workers = 1
+	}
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for d := range domainCh {
+				select {
+				case <-ctx.Done():
+					return
+				case <-e.stopCh:
+					return
+				default:
+					e.crawlDomain(ctx, d)
+				}
+			}
+		}()
+	}
+
+	for _, d := range todo {
 		e.dashboard.Ensure(d)
 		select {
 		case <-ctx.Done():
+			close(domainCh)
+			wg.Wait()
 			close(monitorDone)
 			return ctx.Err()
 		case <-e.stopCh:
+			close(domainCh)
+			wg.Wait()
 			close(monitorDone)
 			return nil
 		default:
-			e.crawlDomain(ctx, d)
+			domainCh <- d
 		}
 	}
+	close(domainCh)
+	wg.Wait()
 
 	close(monitorDone)
 

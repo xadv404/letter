@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/xadv404/letter/internal/dorks"
+	"github.com/xadv404/letter/internal/keywords"
 )
 
 func (e *Engine) generateDorks(domains []string) string {
@@ -31,6 +32,16 @@ func (e *Engine) generateDorks(domains []string) string {
 		}
 	}
 
+	seedTerms := append([]string{}, fp.Keywords...)
+	seedTerms = append(seedTerms, fp.Phrases...)
+	expanded := keywords.ExpandAutocomplete(seedTerms, 6)
+	for _, term := range expanded {
+		fp.AddTerm(term)
+	}
+	if len(expanded) > 0 {
+		e.log(fmt.Sprintf("[Enrichment] +%d keywords via autocomplete", len(expanded)))
+	}
+
 	fp.Finalize()
 
 	if !fp.Viable() {
@@ -49,7 +60,7 @@ func (e *Engine) generateDorks(domains []string) string {
 		_ = e.exporter.WriteDork(dork)
 	}
 
-	e.log(fmt.Sprintf("[Phase 4] %d dorks pour trouver des clones similaires vulnérables SQLi", len(generated)))
+	e.log(fmt.Sprintf("[Phase 4] %d dorks (%d templates) pour clones SQLi", len(generated), dorks.TemplateCount()))
 	preview := dorks.PreviewList(generated, 12)
 	e.log(preview)
 	return strings.Join([]string{

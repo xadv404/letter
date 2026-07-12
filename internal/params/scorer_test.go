@@ -8,7 +8,7 @@ import (
 
 func TestScoreHighRiskParam(t *testing.T) {
 	s := New(1000, t.TempDir())
-	score, tier, _, _ := s.evaluate("search_term")
+	score, tier, _, _, _ := s.evaluate("search_term")
 	if tier != TierHigh {
 		t.Fatalf("expected HIGH tier, got %s", tier)
 	}
@@ -21,7 +21,7 @@ func TestHighTierExactParams(t *testing.T) {
 	s := New(1000, t.TempDir())
 	cases := []string{"id", "filter_by", "search_term"}
 	for _, name := range cases {
-		score, tier, _, _ := s.evaluate(name)
+		score, tier, _, _, _ := s.evaluate(name)
 		if tier != TierHigh || score < 85 {
 			t.Fatalf("%s: expected HIGH >= 85, got tier=%s score=%d", name, tier, score)
 		}
@@ -31,7 +31,7 @@ func TestHighTierExactParams(t *testing.T) {
 func TestPageAndSortAreLow(t *testing.T) {
 	s := New(1000, t.TempDir())
 	for _, name := range []string{"page", "sort", "category"} {
-		score, tier, _, _ := s.evaluate(name)
+		score, tier, _, _, _ := s.evaluate(name)
 		if tier != TierLow {
 			t.Fatalf("%s: expected LOW, got %s (score=%d)", name, tier, score)
 		}
@@ -56,7 +56,7 @@ func TestShopExampleURL(t *testing.T) {
 		t.Fatalf("id should be HIGH, got %s", byName["id"].Tier)
 	}
 
-	_, tier, _, _ := s.evaluate("category")
+	_, tier, _, _, _ := s.evaluate("category")
 	if tier != TierLow {
 		t.Fatalf("category should be LOW, got %s", tier)
 	}
@@ -64,7 +64,7 @@ func TestShopExampleURL(t *testing.T) {
 
 func TestExcludeTrackingParam(t *testing.T) {
 	s := New(1000, t.TempDir())
-	score, tier, _, reason := s.evaluate("utm_source")
+	score, tier, _, _, reason := s.evaluate("utm_source")
 	if tier != TierExclude {
 		t.Fatalf("expected EXCLUDE tier, got %s", tier)
 	}
@@ -78,7 +78,7 @@ func TestExcludeTrackingParam(t *testing.T) {
 
 func TestExcludeSidebar(t *testing.T) {
 	s := New(1000, t.TempDir())
-	_, tier, _, _ := s.evaluate("sidebar")
+	_, tier, _, _, _ := s.evaluate("sidebar")
 	if tier != TierExclude {
 		t.Fatalf("expected EXCLUDE for sidebar, got %s", tier)
 	}
@@ -86,7 +86,7 @@ func TestExcludeSidebar(t *testing.T) {
 
 func TestExcludeSessionToken(t *testing.T) {
 	s := New(1000, t.TempDir())
-	_, tier, _, _ := s.evaluate("phpsessid")
+	_, tier, _, _, _ := s.evaluate("phpsessid")
 	if tier != TierExclude {
 		t.Fatalf("expected EXCLUDE for session token, got %s", tier)
 	}
@@ -97,7 +97,7 @@ func TestSecListsMatch(t *testing.T) {
 	if s.SecListsSize() < 1000 {
 		t.Fatalf("expected 1000+ SecLists params, got %d", s.SecListsSize())
 	}
-	score, tier, matched, _ := s.evaluate("username")
+	score, tier, _, matched, _ := s.evaluate("username")
 	if matched != "seclists" {
 		t.Fatalf("expected seclists match, got %s", matched)
 	}
@@ -189,7 +189,7 @@ func TestWordlistCache(t *testing.T) {
 
 func TestMediumPatternScoring(t *testing.T) {
 	s := New(1000, t.TempDir())
-	score, tier, matched, _ := s.evaluate("customer_id")
+	score, tier, _, matched, _ := s.evaluate("customer_id")
 	if tier != TierHigh || score < 85 {
 		t.Fatalf("customer_id: expected HIGH, got %s score=%d matched=%s", tier, score, matched)
 	}

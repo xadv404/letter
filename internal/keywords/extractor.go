@@ -17,7 +17,6 @@ var tagWeights = map[string]int{
 	"h1": 5, "h2": 4, "h3": 3,
 	"h4": 2, "h5": 2, "h6": 2,
 	"th": 3, "label": 3, "button": 2,
-	"a": 2,
 	"td": 2, "dt": 2, "dd": 2,
 	"p": 1, "li": 1, "span": 1,
 }
@@ -68,7 +67,7 @@ func (e *Extractor) ExtractPage(domain, pageURL string, doc *html.Node) []Result
 	candidates := map[string]candidate{}
 	e.collectURLPath(pageURL, candidates)
 	if doc != nil {
-		for _, blk := range collectMeta(doc) {
+		for _, blk := range collectStructured(doc) {
 			e.processBlock(blk, candidates)
 		}
 		for _, blk := range collectBlocks(doc) {

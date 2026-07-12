@@ -18,12 +18,13 @@ const (
 const MinDorkScore = 65 // HIGH + MEDIUM only for dork generation
 
 type Result struct {
-	Domain  string
-	URL     string
-	Name    string
-	Score   int
-	Tier    Tier
-	Matched string
+	Domain   string
+	URL      string
+	Name     string
+	Score    int
+	Tier     Tier
+	Category Category
+	Matched  string
 }
 
 type FlaggedURL struct {
@@ -37,6 +38,7 @@ type FilterDecision struct {
 	Param    string
 	Score    int
 	Tier     Tier
+	Category Category
 	Accepted bool
 	Reason   string
 }
@@ -103,9 +105,9 @@ func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 			continue
 		}
 
-		score, tier, matched, reason := s.evaluate(name)
+		score, tier, cat, matched, reason := s.evaluate(name)
 		accepted := score >= minScore
-		s.recordDecision(name, score, tier, accepted, reason)
+		s.recordDecision(name, score, tier, cat, accepted, reason)
 
 		if !accepted {
 			continue
@@ -128,12 +130,13 @@ func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 		}
 
 		out = append(out, Result{
-			Domain:  domain,
-			URL:     rawURL,
-			Name:    name,
-			Score:   score,
-			Tier:    tier,
-			Matched: matched,
+			Domain:   domain,
+			URL:      rawURL,
+			Name:     name,
+			Score:    score,
+			Tier:     tier,
+			Category: cat,
+			Matched:  matched,
 		})
 	}
 
@@ -163,41 +166,49 @@ func (s *Scorer) flagURL(domain, rawURL string, highParams []string, maxScore in
 	}
 }
 
-func (s *Scorer) evaluate(name string) (score int, tier Tier, matched, reason string) {
+func (s *Scorer) evaluate(name string) (score int, tier Tier, cat Category, matched, reason string) {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	if lower == "" {
-		return 0, TierExclude, "empty", "empty parameter name"
+		return 0, TierExclude, CatNoise, "empty", "empty parameter name"
 	}
 
 	if exScore, exReason, ok := matchExclude(lower); ok {
-		return exScore, TierExclude, "exclude_rule", exReason
+		return exScore, TierExclude, CatNoise, "exclude_rule", exReason
 	}
 
 	// LOW before SecLists — page/sort/category stay weak even if in wordlist.
 	if sc, ok := scoreLowExact(lower); ok {
-		return sc, TierLow, "weak", "weak pagination/sort/CMS-like parameter"
+		return sc, TierLow, CatNoise, "weak", "weak pagination/sort/CMS-like parameter"
 	}
 
 	if sc, ok := scoreHighExact(lower); ok {
-		return sc, TierHigh, "high_exact", "classically injectable SQLi parameter"
+		cat = classifyParam(lower, "high_exact")
+		return weightedScore(sc, cat), TierHigh, cat, "high_exact", "classically injectable SQLi parameter"
 	}
 	if sc, ok := scoreHighSuffix(lower); ok {
-		return sc, TierHigh, "high_suffix", "high-risk SQLi parameter (id/num suffix)"
+		cat = classifyParam(lower, "high_suffix")
+		return weightedScore(sc, cat), TierHigh, cat, "high_suffix", "high-risk SQLi parameter (id/num suffix)"
 	}
 
 	if _, ok := s.seclists[lower]; ok {
-		return 78, TierMedium, "seclists", "verified against SecLists Burp parameter wordlist"
+		cat = classifyParam(lower, "seclists")
+		sc := weightedScore(78, cat)
+		return sc, scoreToTier(sc), cat, "seclists", "verified against SecLists Burp parameter wordlist"
 	}
 
 	if sc, patReason, ok := scoreMediumPattern(lower); ok {
-		return sc, scoreToTier(sc), "pattern", patReason
+		cat = classifyParam(lower, "pattern")
+		sc = weightedScore(sc, cat)
+		return sc, scoreToTier(sc), cat, "pattern", patReason
 	}
 
 	if isPlausibleParam(lower) {
-		return 68, TierMedium, "unknown", "unknown parameter — plausible SQLi candidate"
+		cat = classifyParam(lower, "unknown")
+		sc := weightedScore(68, cat)
+		return sc, scoreToTier(sc), cat, "unknown", "unknown parameter — plausible SQLi candidate"
 	}
 
-	return 45, TierExclude, "noise", "no SQLi relevance detected"
+	return 45, TierExclude, CatNoise, "noise", "no SQLi relevance detected"
 }
 
 func scoreToTier(score int) Tier {
@@ -234,7 +245,7 @@ func appendUnique(slice []string, val string) []string {
 	return append(slice, val)
 }
 
-func (s *Scorer) recordDecision(param string, score int, tier Tier, accepted bool, reason string) {
+func (s *Scorer) recordDecision(param string, score int, tier Tier, cat Category, accepted bool, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if accepted {
@@ -243,7 +254,7 @@ func (s *Scorer) recordDecision(param string, score int, tier Tier, accepted boo
 		s.stats.Rejected++
 	}
 	s.decisions = append(s.decisions, FilterDecision{
-		Param: param, Score: score, Tier: tier, Accepted: accepted, Reason: reason,
+		Param: param, Score: score, Tier: tier, Category: cat, Accepted: accepted, Reason: reason,
 	})
 	if len(s.decisions) > 100 {
 		s.decisions = s.decisions[len(s.decisions)-100:]
@@ -311,10 +322,11 @@ func (s *Scorer) topForDomain(domain string, limit, minScore int) []Result {
 	out := make([]Result, len(arr))
 	for i, item := range arr {
 		out[i] = Result{
-			Domain: domain,
-			Name:   item.name,
-			Score:  item.score,
-			Tier:   scoreToTier(item.score),
+			Domain:   domain,
+			Name:     item.name,
+			Score:    item.score,
+			Tier:     scoreToTier(item.score),
+			Category: classifyParam(item.name, ""),
 		}
 	}
 	return out
