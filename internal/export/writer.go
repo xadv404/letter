@@ -69,10 +69,10 @@ func (w *Writer) WriteKeyword(domain, keyword string, weight int, source string)
 	return w.maybeFlush()
 }
 
-func (w *Writer) WriteParameter(domain, url, param string, score int, tier string) error {
+func (w *Writer) WriteParameter(domain, rawURL, param string, score int, tier, matched string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if _, err := fmt.Fprintf(w.paramWriter, "%s\t%s\t%s\t%d\t%s\n", domain, url, param, score, tier); err != nil {
+	if _, err := fmt.Fprintf(w.paramWriter, "%s\t%s\t%s\t%d\t%s\t%s\n", domain, rawURL, param, score, tier, matched); err != nil {
 		return err
 	}
 	return w.maybeFlush()

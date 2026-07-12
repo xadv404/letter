@@ -2,7 +2,6 @@ package params
 
 import (
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -10,18 +9,19 @@ import (
 type Tier string
 
 const (
-	TierHigh    Tier = "HIGH"
-	TierMedium  Tier = "MEDIUM"
-	TierLow     Tier = "LOW"
-	TierExclude Tier = "EXCLUDE"
+	TierHigh    Tier = "HIGH"    // score ≥ 85
+	TierMedium  Tier = "MEDIUM"  // score 65–84
+	TierLow     Tier = "LOW"     // score 50–64
+	TierExclude Tier = "EXCLUDE" // score < 50
 )
 
 type Result struct {
-	Domain string
-	URL    string
-	Name   string
-	Score  int
-	Tier   Tier
+	Domain  string
+	URL     string
+	Name    string
+	Score   int
+	Tier    Tier
+	Matched string
 }
 
 type FilterDecision struct {
@@ -33,39 +33,30 @@ type FilterDecision struct {
 }
 
 type Scorer struct {
-	mu          sync.Mutex
-	seclists    map[string]struct{}
-	highPatterns []*regexp.Regexp
-	excludePatterns []*regexp.Regexp
-	maxCount    int
-	count       int
-	decisions   []FilterDecision
-	stats       struct {
+	mu       sync.Mutex
+	seclists map[string]struct{}
+	maxCount int
+	count    int
+	seen     map[string]struct{}
+	decisions []FilterDecision
+	stats    struct {
 		Accepted int
 		Rejected int
 	}
+	domainHits map[string]map[string]int
 }
 
-func New(maxCount int) *Scorer {
-	s := &Scorer{
-		seclists: buildSecListsFallback(),
-		maxCount: maxCount,
+// New creates a scorer. cacheDir enables the 7-day SecLists wordlist cache.
+func New(maxCount int, cacheDir string) *Scorer {
+	return &Scorer{
+		seclists:   LoadWordlist(cacheDir),
+		maxCount:   maxCount,
+		seen:       map[string]struct{}{},
+		domainHits: map[string]map[string]int{},
 	}
-	s.highPatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)^(id|uid|user_id|product_id|item_id|order_id)$`),
-		regexp.MustCompile(`(?i)^(search|search_term|q|query|keyword|keywords)$`),
-		regexp.MustCompile(`(?i)^(filter|filter_by|sort|sort_by|order|orderby)$`),
-		regexp.MustCompile(`(?i)^(cat|category|catid|page|pageid|article)$`),
-	}
-	s.excludePatterns = []*regexp.Regexp{
-		regexp.MustCompile(`(?i)^utm_`),
-		regexp.MustCompile(`(?i)^(ga_|gclid|fbclid|mc_|pk_|_ga)$`),
-		regexp.MustCompile(`(?i)^(csrf|nonce|token|session|sid|phpsessid|jsessionid)$`),
-		regexp.MustCompile(`(?i)^(width|height|color|theme|lang|locale|currency)$`),
-		regexp.MustCompile(`(?i)^(ref|referrer)$`),
-	}
-	return s
 }
+
+func (s *Scorer) SecListsSize() int { return len(s.seclists) }
 
 func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 	u, err := url.Parse(rawURL)
@@ -76,90 +67,115 @@ func (s *Scorer) ScoreURL(domain, rawURL string, minScore int) []Result {
 	if err != nil {
 		return nil
 	}
+
 	var out []Result
 	for name := range vals {
 		if s.count >= s.maxCount {
 			break
 		}
-		score, tier := s.scoreParam(name)
-		accepted := int(tierPriority(tier)) >= minScore
-		reason := tierReason(tier, accepted)
+		key := domain + "\x00" + name
+		s.mu.Lock()
+		if _, dup := s.seen[key]; dup {
+			s.mu.Unlock()
+			continue
+		}
+		s.mu.Unlock()
+
+		score, tier, matched, reason := s.evaluate(name)
+		accepted := score >= minScore
+
 		s.recordDecision(name, score, tier, accepted, reason)
+
 		if !accepted {
 			continue
 		}
+
 		s.mu.Lock()
+		s.seen[key] = struct{}{}
 		s.count++
+		if s.domainHits[domain] == nil {
+			s.domainHits[domain] = map[string]int{}
+		}
+		s.domainHits[domain][name] = score
 		s.mu.Unlock()
+
 		out = append(out, Result{
-			Domain: domain,
-			URL:    rawURL,
-			Name:   name,
-			Score:  score,
-			Tier:   tier,
+			Domain:  domain,
+			URL:     rawURL,
+			Name:    name,
+			Score:   score,
+			Tier:    tier,
+			Matched: matched,
 		})
 	}
 	return out
 }
 
-func (s *Scorer) scoreParam(name string) (int, Tier) {
+func (s *Scorer) evaluate(name string) (score int, tier Tier, matched, reason string) {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	if lower == "" {
-		return 0, TierExclude
+		return 0, TierExclude, "empty", "empty parameter name"
 	}
 
-	for _, re := range s.excludePatterns {
-		if re.MatchString(lower) {
-			return 30, TierExclude
-		}
+	// Tier 1: exclusions (<50)
+	if exScore, exReason, ok := matchExclude(lower); ok {
+		return exScore, TierExclude, "exclude_rule", exReason
 	}
 
-	for _, re := range s.highPatterns {
-		if re.MatchString(lower) {
-			return 90, TierHigh
-		}
+	// Tier 3: HIGH (≥85) — exact names and suffixes
+	if sc, ok := scoreHighExact(lower); ok {
+		return sc, TierHigh, "high_exact", "high-risk SQLi parameter (exact match)"
+	}
+	if sc, ok := scoreHighSuffix(lower); ok {
+		return sc, TierHigh, "high_suffix", "high-risk SQLi parameter (id/num suffix)"
 	}
 
+	// SecLists Burp wordlist verification → MEDIUM-HIGH
 	if _, ok := s.seclists[lower]; ok {
-		return 80, TierMedium
+		return 82, TierMedium, "seclists", "verified against SecLists Burp parameter wordlist"
 	}
 
-	if strings.Contains(lower, "id") || strings.Contains(lower, "num") || strings.Contains(lower, "ref") {
-		return 70, TierMedium
+	// Pattern-based MEDIUM
+	if sc, patReason, ok := scoreMediumPattern(lower); ok {
+		return sc, scoreToTier(sc), "pattern", patReason
 	}
 
-	if len(lower) <= 3 {
-		return 55, TierLow
+	// Unknown but plausible alphanumeric → MEDIUM baseline
+	if isPlausibleParam(lower) {
+		return 68, TierMedium, "unknown", "unknown parameter — plausible SQLi candidate"
 	}
 
-	return 68, TierMedium
+	// LOW tier weak matches
+	if sc, ok := scoreLowExact(lower); ok {
+		return sc, TierLow, "weak", "weak/generic parameter name"
+	}
+
+	return 45, TierExclude, "noise", "no SQLi relevance detected"
 }
 
-func tierPriority(t Tier) int {
-	switch t {
-	case TierHigh:
-		return 90
-	case TierMedium:
-		return 70
-	case TierLow:
-		return 55
+func scoreToTier(score int) Tier {
+	switch {
+	case score >= 85:
+		return TierHigh
+	case score >= 65:
+		return TierMedium
+	case score >= 50:
+		return TierLow
 	default:
-		return 20
+		return TierExclude
 	}
 }
 
-func tierReason(t Tier, accepted bool) string {
-	if accepted {
-		return "score above threshold"
+func isPlausibleParam(name string) bool {
+	if len(name) < 3 || len(name) > 64 {
+		return false
 	}
-	switch t {
-	case TierExclude:
-		return "tracking/CMS/analytics parameter"
-	case TierLow:
-		return "weak pattern match excluded by default"
-	default:
-		return "below minimum score"
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_' && r != '-' {
+			return false
+		}
 	}
+	return true
 }
 
 func (s *Scorer) recordDecision(param string, score int, tier Tier, accepted bool, reason string) {
@@ -192,19 +208,47 @@ func (s *Scorer) Stats() (accepted, rejected int) {
 	return s.stats.Accepted, s.stats.Rejected
 }
 
-func buildSecListsFallback() map[string]struct{} {
-	// Subset of common Burp/SecLists parameter names for offline use.
-	names := []string{
-		"id", "user", "username", "password", "email", "search", "query", "q", "page", "cat",
-		"category", "product", "item", "order", "sort", "filter", "file", "path", "dir", "doc",
-		"document", "view", "action", "cmd", "command", "exec", "module", "name", "type", "table",
-		"column", "field", "select", "where", "report", "download", "export", "import", "debug",
-		"test", "admin", "role", "group", "account", "invoice", "payment", "amount", "price",
-		"year", "month", "day", "date", "from", "to", "limit", "offset", "start", "end",
+func (s *Scorer) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.count
+}
+
+// TopForDomain returns highest-scored unique parameters for a domain.
+func (s *Scorer) TopForDomain(domain string, limit int) []Result {
+	s.mu.Lock()
+	hits := s.domainHits[domain]
+	s.mu.Unlock()
+	if len(hits) == 0 {
+		return nil
 	}
-	m := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		m[n] = struct{}{}
+
+	type kv struct {
+		name  string
+		score int
 	}
-	return m
+	arr := make([]kv, 0, len(hits))
+	for name, score := range hits {
+		arr = append(arr, kv{name, score})
+	}
+	for i := 0; i < len(arr); i++ {
+		for j := i + 1; j < len(arr); j++ {
+			if arr[j].score > arr[i].score {
+				arr[i], arr[j] = arr[j], arr[i]
+			}
+		}
+	}
+	if limit > 0 && len(arr) > limit {
+		arr = arr[:limit]
+	}
+	out := make([]Result, len(arr))
+	for i, item := range arr {
+		out[i] = Result{
+			Domain: domain,
+			Name:   item.name,
+			Score:  item.score,
+			Tier:   scoreToTier(item.score),
+		}
+	}
+	return out
 }

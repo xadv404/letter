@@ -38,10 +38,7 @@ type Engine struct {
 
 	pauseCh  chan struct{}
 	resumeCh chan struct{}
-	stopCh   chan struct{}
-
-	domainParams map[string][]string
-	dataMu       sync.Mutex
+	stopCh chan struct{}
 }
 
 func New(cfg config.CrawlConfig) (*Engine, error) {
@@ -63,13 +60,12 @@ func New(cfg config.CrawlConfig) (*Engine, error) {
 		state:          st,
 		dashboard:      monitor.New(),
 		kw:             keywords.New(config.MaxKeywords),
-		scorer:         params.New(config.MaxParams),
+		scorer:         params.New(config.MaxParams, cfg.OutputDir),
 		dorks:          dorks.New(),
 		client:         &http.Client{Timeout: 15 * time.Second},
 		pauseCh:        make(chan struct{}, 1),
 		resumeCh:       make(chan struct{}, 1),
-		stopCh:       make(chan struct{}),
-		domainParams: map[string][]string{},
+		stopCh: make(chan struct{}),
 	}, nil
 }
 
@@ -223,15 +219,13 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 				queue = append(queue, link)
 			}
 			for _, pr := range e.scorer.ScoreURL(hostKey, link, e.cfg.MinParamScore) {
-				_ = e.exporter.WriteParameter(pr.Domain, pr.URL, pr.Name, pr.Score, string(pr.Tier))
-				e.trackParam(hostKey, pr.Name)
+				_ = e.exporter.WriteParameter(pr.Domain, pr.URL, pr.Name, pr.Score, string(pr.Tier), pr.Matched)
 				e.dashboard.AddParams(1)
 			}
 		}
 
 		for _, pr := range e.scorer.ScoreURL(hostKey, rawURL, e.cfg.MinParamScore) {
-			_ = e.exporter.WriteParameter(pr.Domain, pr.URL, pr.Name, pr.Score, string(pr.Tier))
-			e.trackParam(hostKey, pr.Name)
+			_ = e.exporter.WriteParameter(pr.Domain, pr.URL, pr.Name, pr.Score, string(pr.Tier), pr.Matched)
 			e.dashboard.AddParams(1)
 		}
 
@@ -354,25 +348,6 @@ func (e *Engine) persist(host string, pages, errors int, finished bool, visited 
 	})
 }
 
-func (e *Engine) trackParam(domain, param string) {
-	e.dataMu.Lock()
-	defer e.dataMu.Unlock()
-	e.domainParams[domain] = appendUnique(e.domainParams[domain], param, 50)
-}
-
-func appendUnique(slice []string, val string, max int) []string {
-	for _, s := range slice {
-		if s == val {
-			return slice
-		}
-	}
-	slice = append(slice, val)
-	if len(slice) > max {
-		slice = slice[len(slice)-max:]
-	}
-	return slice
-}
-
 func (e *Engine) generateDorks(domains []string) {
 	for _, domain := range domains {
 		u, err := url.Parse(domain)
@@ -385,9 +360,10 @@ func (e *Engine) generateDorks(domains []string) {
 		for _, r := range top {
 			kws = append(kws, r.Keyword)
 		}
-		e.dataMu.Lock()
-		prms := append([]string{}, e.domainParams[host]...)
-		e.dataMu.Unlock()
+		prms := make([]string, 0, 50)
+		for _, pr := range e.scorer.TopForDomain(host, 50) {
+			prms = append(prms, pr.Name)
+		}
 		if len(kws) == 0 {
 			kws = []string{"admin", "login"}
 		}
