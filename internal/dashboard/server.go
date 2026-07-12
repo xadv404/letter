@@ -1,18 +1,15 @@
 package dashboard
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
-	"os"
-	"os/exec"
-	"os/signal"
-	"runtime"
-	"syscall"
+	"time"
 )
 
-// Run starts the embedded HTML dashboard and blocks until shutdown.
+// Run starts the embedded HTML dashboard in a native GUI window.
 func Run() error {
 	app := newApp()
 
@@ -42,40 +39,21 @@ func Run() error {
 	mux.Handle("/api/dorks", corsMiddleware(http.HandlerFunc(app.handleDorks)))
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
-	ln, err := net.Listen("tcp", "127.0.0.1:9477")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		ln, err = net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return err
-		}
+		return err
 	}
 
 	url := fmt.Sprintf("http://%s/index.html", ln.Addr().String())
-	fmt.Println("Letter Recon →", url)
-	_ = openBrowser(url)
-
 	srv := &http.Server{Handler: mux}
-	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Serve(ln) }()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() { _ = srv.Serve(ln) }()
 
-	select {
-	case err := <-errCh:
-		return err
-	case <-sigCh:
-		return srv.Close()
-	}
-}
+	runGUI(url, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	})
 
-func openBrowser(url string) error {
-	switch runtime.GOOS {
-	case "windows":
-		return exec.Command("cmd", "/c", "start", "", url).Start()
-	case "darwin":
-		return exec.Command("open", url).Start()
-	default:
-		return exec.Command("xdg-open", url).Start()
-	}
+	return nil
 }

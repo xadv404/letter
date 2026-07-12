@@ -3,6 +3,7 @@ module github.com/xadv404/letter
 go 1.22
 
 require (
+	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
 	github.com/shirou/gopsutil/v3 v3.24.5
 	golang.org/x/net v0.28.0
 )
@@ -17,4 +18,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 )
 
-require golang.org/x/sys v0.23.0 // indirect
+require (
+	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
+	golang.org/x/sys v0.23.0 // indirect
+)
