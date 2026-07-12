@@ -37,7 +37,7 @@ Le dashboard s'ouvre dans le navigateur. `Ctrl+C` pour quitter.
 1. **Upload Domains** — fichier `.txt` (un domaine par ligne)
 2. **Start** — crawl → export dans `./output/`
 3. **Pause / Resume** — sans perte de données
-4. Fichiers générés : `dorks.txt` (notés), `keywords.txt`, `params.txt`, `dorktypes.txt`
+4. Fichier généré : `dorks.txt` uniquement (keywords/params restent en mémoire pour l'assemblage)
 
 ## Dépannage
 

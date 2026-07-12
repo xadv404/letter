@@ -447,9 +447,6 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		kwResults := e.kw.ExtractPage(hostKey, rawURL, doc)
 		if len(kwResults) > 0 {
 			e.dashboard.AddKeywords(len(kwResults))
-			for _, r := range kwResults {
-				_ = e.exporter.WriteKeywordIncremental(r.Keyword, r.Weight)
-			}
 		}
 		e.emitSnapshot(phaseLabel(int(e.phase.Load())), true, "")
 
@@ -478,9 +475,6 @@ func (e *Engine) exportScoredParams(domain string, scored []params.Result) {
 		return
 	}
 	e.dashboard.AddParams(len(scored))
-	for _, r := range scored {
-		_ = e.exporter.WriteParamIncremental(r.Name, r.Score, string(r.Tier))
-	}
 }
 
 func (e *Engine) fetch(ctx context.Context, rawURL string) (string, []string, error) {

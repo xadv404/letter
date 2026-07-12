@@ -7,7 +7,6 @@ import (
 
 	"github.com/xadv404/letter/internal/config"
 	"github.com/xadv404/letter/internal/dorks"
-	"github.com/xadv404/letter/internal/export"
 	"github.com/xadv404/letter/internal/keywords"
 )
 
@@ -15,8 +14,7 @@ func (e *Engine) generateDorks(domains []string) string {
 	fp := dorks.NewFingerprint()
 	var kwList, phList []string
 
-	// Ranked export pool — max 500 keywords for files + dork assembly.
-	rankedExport := e.buildRankedKeywords(config.MaxExportKeywords)
+	rankedKW := e.kw.Top(config.MaxExportKeywords)
 
 	for _, domain := range domains {
 		rawHost, _ := dorks.SiteScope(domain)
@@ -44,8 +42,7 @@ func (e *Engine) generateDorks(domains []string) string {
 		}
 	}
 
-	// Dork assembly uses top keywords only (not the full 80k pool).
-	for _, r := range rankedExport {
+	for _, r := range rankedKW {
 		term := r.Keyword
 		fp.AddTerm(term)
 		if strings.Contains(term, " ") {
@@ -81,42 +78,21 @@ func (e *Engine) generateDorks(domains []string) string {
 	materials.KeywordScores = e.buildKeywordScores()
 	assembled := dorks.RankAssembled(materials)
 
-	if err := e.exporter.WriteFinalExport(materials, assembled, rankedExport); err != nil {
+	if err := e.exporter.WriteDorks(assembled); err != nil {
 		e.log("[Phase 4] Erreur export: " + err.Error())
 		return "Export failed."
 	}
 
-	extracted := e.kw.Unique()
 	e.log(fmt.Sprintf(
-		"[Phase 4] %d dorks | %d keywords exportés (sur %d extraits) | %d params matériaux",
-		len(assembled), len(rankedExport), extracted, len(materials.Params),
+		"[Phase 4] %d dorks exportés (%d keywords utilisés en interne)",
+		len(assembled), len(rankedKW),
 	))
 	preview := dorks.PreviewAssembled(materials, 12)
 	e.log(preview)
 	return strings.Join([]string{
 		fmt.Sprintf("dorks.txt: %d requêtes notées", len(assembled)),
-		fmt.Sprintf("keywords.txt: %d (top ranked, %d extraits en session)", len(rankedExport), extracted),
-		fmt.Sprintf("dorktypes.txt: %d | params.txt: %d", len(materials.Types), len(materials.Params)),
 		preview,
 	}, "\n")
-}
-
-func (e *Engine) buildRankedKeywords(limit int) []export.KeywordExport {
-	var out []export.KeywordExport
-	for _, r := range e.kw.Top(limit) {
-		out = append(out, export.KeywordExport{Keyword: r.Keyword, Weight: r.Weight})
-	}
-	return out
-}
-
-func countEliteHigh(ranked []dorks.AssembledDork) int {
-	n := 0
-	for _, d := range ranked {
-		if d.Tier == dorks.TierElite || d.Tier == dorks.TierHigh {
-			n++
-		}
-	}
-	return n
 }
 
 func (e *Engine) buildParamScores(domains []string) map[string]int {
