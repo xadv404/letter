@@ -107,6 +107,8 @@ func (e *Engine) emitSnapshot(phaseLabel string, running bool, dorkPreview strin
 		dorkPreview,
 		running,
 	)
+	ui.Keywords = e.kw.Unique()
+	ui.Params = e.scorer.Count()
 	e.events.OnSnapshot(ui)
 }
 
@@ -139,6 +141,15 @@ func (e *Engine) Stop() {
 
 func (e *Engine) Run(ctx context.Context, domains []string) error {
 	e.dashboard.Reset()
+
+	hosts := make([]string, 0, len(domains))
+	for _, d := range domains {
+		if u, err := url.Parse(d); err == nil && u.Host != "" {
+			hosts = append(hosts, NormalizeHost(u.Host))
+		}
+	}
+	_ = e.state.ResetDomains(hosts)
+
 	e.setPhase(1, "Phase 1/4 — Crawling")
 
 	monitorDone := make(chan struct{})
@@ -200,7 +211,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 	if err != nil {
 		return
 	}
-	hostKey := u.Host
+	hostKey := NormalizeHost(u.Host)
 	e.log("[Phase 1] Crawling " + hostKey)
 	progress := e.state.Get(hostKey)
 	if progress.Finished {
@@ -282,9 +293,8 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		if body != "" {
 			doc, _ = html.Parse(strings.NewReader(body))
 		}
-		if krs := e.kw.ExtractPage(hostKey, rawURL, doc); len(krs) > 0 {
-			e.dashboard.AddKeywords(len(krs))
-		}
+		e.kw.ExtractPage(hostKey, rawURL, doc)
+		e.emitSnapshot(phaseLabel(int(e.phase.Load())), true, "")
 
 		for _, link := range links {
 			link = canonicalURL(link)

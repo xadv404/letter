@@ -11,7 +11,8 @@ func (e *Engine) generateDorks(domains []string) string {
 	fp := dorks.NewFingerprint()
 
 	for _, domain := range domains {
-		host, _ := dorks.SiteScope(domain)
+		rawHost, _ := dorks.SiteScope(domain)
+		host := NormalizeHost(rawHost)
 
 		for _, r := range e.kw.TopForDomain(host, 50) {
 			fp.AddTerm(r.Keyword)

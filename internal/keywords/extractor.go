@@ -65,10 +65,6 @@ func New(maxCount int) *Extractor {
 
 // ExtractPage extracts keywords from a crawled URL and its HTML document.
 func (e *Extractor) ExtractPage(domain, pageURL string, doc *html.Node) []Result {
-	if e.sessionLen >= e.maxSession {
-		return nil
-	}
-
 	candidates := map[string]candidate{}
 	e.collectURLPath(pageURL, candidates)
 	if doc != nil {
@@ -77,6 +73,11 @@ func (e *Extractor) ExtractPage(domain, pageURL string, doc *html.Node) []Result
 		}
 		for _, blk := range collectBlocks(doc) {
 			e.processBlock(blk, candidates)
+		}
+		if len(candidates) == 0 {
+			for _, blk := range collectBodyFallback(doc) {
+				e.processBlock(blk, candidates)
+			}
 		}
 	}
 	return e.commitCandidates(domain, pageURL, candidates)
@@ -141,17 +142,16 @@ func (e *Extractor) commitCandidates(domain, pageURL string, candidates map[stri
 		if newScore <= e.emitted[phrase] {
 			continue
 		}
-		if e.sessionLen >= e.maxSession {
-			break
+		if e.sessionLen < e.maxSession {
+			e.emitted[phrase] = newScore
+			e.sessionLen++
+			results = append(results, Result{
+				Domain:  domain,
+				Keyword: phrase,
+				Weight:  newScore,
+				Source:  cand.source,
+			})
 		}
-		e.emitted[phrase] = newScore
-		e.sessionLen++
-		results = append(results, Result{
-			Domain:  domain,
-			Keyword: phrase,
-			Weight:  newScore,
-			Source:  cand.source,
-		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -295,6 +295,32 @@ func collectBlocks(doc *html.Node) []block {
 	}
 	walk(doc)
 	return blocks
+}
+
+func collectBodyFallback(doc *html.Node) []block {
+	var body *html.Node
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "body" {
+			body = n
+			return
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	if body == nil {
+		return nil
+	}
+	text := strings.TrimSpace(deepText(body))
+	if len(text) < 24 {
+		return nil
+	}
+	if len(text) > 4000 {
+		text = text[:4000]
+	}
+	return []block{{tag: "body", weight: 2, text: text}}
 }
 
 func deepText(n *html.Node) string {
