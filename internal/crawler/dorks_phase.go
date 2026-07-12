@@ -5,7 +5,9 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/xadv404/letter/internal/config"
 	"github.com/xadv404/letter/internal/dorks"
+	"github.com/xadv404/letter/internal/export"
 	"github.com/xadv404/letter/internal/keywords"
 )
 
@@ -13,18 +15,20 @@ func (e *Engine) generateDorks(domains []string) string {
 	fp := dorks.NewFingerprint()
 	var kwList, phList []string
 
+	// Ranked export pool — max 500 keywords for files + dork assembly.
+	rankedExport := e.buildRankedKeywords(config.MaxExportKeywords)
+
 	for _, domain := range domains {
 		rawHost, _ := dorks.SiteScope(domain)
 		host := NormalizeHost(rawHost)
 
-		for _, r := range e.kw.TopForDomain(host, 40) {
+		for _, r := range e.kw.TopForDomain(host, 25) {
 			fp.AddTerm(r.Keyword)
-			kwList = append(kwList, r.Keyword)
 		}
-		for _, path := range e.kw.TopPathsForDomain(host, 30) {
+		for _, path := range e.kw.TopPathsForDomain(host, 15) {
 			fp.AddPath(path)
 		}
-		for _, r := range e.scorer.TopInjectableParams(host, 40) {
+		for _, r := range e.scorer.TopInjectableParams(host, 20) {
 			fp.AddParameter(r.Name)
 		}
 		for _, flagged := range e.scorer.FlaggedURLs(host) {
@@ -40,28 +44,27 @@ func (e *Engine) generateDorks(domains []string) string {
 		}
 	}
 
-	for _, r := range e.kw.Top(50) {
-		fp.AddTerm(r.Keyword)
-		kwList = append(kwList, r.Keyword)
-	}
-
-	seedTerms := uniqueStrings(kwList)
-	expanded := keywords.ExpandAutocomplete(seedTerms, 15)
-	for _, term := range expanded {
-		fp.AddTerm(term)
-		kwList = append(kwList, term)
-	}
-	if len(expanded) > 0 {
-		e.log(fmt.Sprintf("[Keywords] +%d termes via autocomplete", len(expanded)))
-	}
-
-	for _, r := range e.kw.Top(60) {
+	// Dork assembly uses top keywords only (not the full 80k pool).
+	for _, r := range rankedExport {
 		term := r.Keyword
+		fp.AddTerm(term)
 		if strings.Contains(term, " ") {
 			phList = append(phList, term)
 		} else {
 			kwList = append(kwList, term)
 		}
+	}
+
+	seedTerms := uniqueStrings(kwList)
+	expanded := keywords.ExpandAutocomplete(seedTerms, 10)
+	for _, term := range expanded {
+		fp.AddTerm(term)
+		if !strings.Contains(term, " ") {
+			kwList = append(kwList, term)
+		}
+	}
+	if len(expanded) > 0 {
+		e.log(fmt.Sprintf("[Keywords] +%d termes via autocomplete", len(expanded)))
 	}
 
 	fp.Finalize()
@@ -78,23 +81,32 @@ func (e *Engine) generateDorks(domains []string) string {
 	materials.KeywordScores = e.buildKeywordScores()
 	assembled := dorks.RankAssembled(materials)
 
-	if err := e.exporter.WriteMaterials(materials); err != nil {
+	if err := e.exporter.WriteFinalExport(materials, assembled, rankedExport); err != nil {
 		e.log("[Phase 4] Erreur export: " + err.Error())
 		return "Export failed."
 	}
 
+	extracted := e.kw.Unique()
 	e.log(fmt.Sprintf(
-		"[Phase 4] %d dorks notés | ELITE+HIGH: %d | %d types | %d keywords | %d params",
-		len(assembled), countEliteHigh(assembled), len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params),
+		"[Phase 4] %d dorks | %d keywords exportés (sur %d extraits) | %d params matériaux",
+		len(assembled), len(rankedExport), extracted, len(materials.Params),
 	))
 	preview := dorks.PreviewAssembled(materials, 12)
 	e.log(preview)
 	return strings.Join([]string{
-		fmt.Sprintf("dorks.txt: %d requêtes notées (score | tier | family | dork)", len(assembled)),
-		fmt.Sprintf("dorktypes.txt: %d | keywords.txt: %d | params.txt: %d",
-			len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params)),
+		fmt.Sprintf("dorks.txt: %d requêtes notées", len(assembled)),
+		fmt.Sprintf("keywords.txt: %d (top ranked, %d extraits en session)", len(rankedExport), extracted),
+		fmt.Sprintf("dorktypes.txt: %d | params.txt: %d", len(materials.Types), len(materials.Params)),
 		preview,
 	}, "\n")
+}
+
+func (e *Engine) buildRankedKeywords(limit int) []export.KeywordExport {
+	var out []export.KeywordExport
+	for _, r := range e.kw.Top(limit) {
+		out = append(out, export.KeywordExport{Keyword: r.Keyword, Weight: r.Weight})
+	}
+	return out
 }
 
 func countEliteHigh(ranked []dorks.AssembledDork) int {
@@ -112,7 +124,7 @@ func (e *Engine) buildParamScores(domains []string) map[string]int {
 	for _, domain := range domains {
 		rawHost, _ := dorks.SiteScope(domain)
 		host := NormalizeHost(rawHost)
-		for _, r := range e.scorer.TopInjectableParams(host, 80) {
+		for _, r := range e.scorer.TopInjectableParams(host, 40) {
 			name := strings.ToLower(r.Name)
 			if prev, ok := out[name]; !ok || r.Score > prev {
 				out[name] = r.Score
@@ -124,7 +136,7 @@ func (e *Engine) buildParamScores(domains []string) map[string]int {
 
 func (e *Engine) buildKeywordScores() map[string]int {
 	out := map[string]int{}
-	for _, r := range e.kw.Top(120) {
+	for _, r := range e.kw.Top(config.MaxExportKeywords) {
 		kw := strings.ToLower(r.Keyword)
 		if prev, ok := out[kw]; !ok || r.Weight > prev {
 			out[kw] = r.Weight

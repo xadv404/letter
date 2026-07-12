@@ -10,8 +10,15 @@ const (
 	MaxDepth     = 10
 	MinPageLimit = 10
 	MaxPageLimit = 500
-	MaxKeywords  = 200_000
-	MaxParams    = 100_000
+	// MaxKeywords — in-memory extraction ceiling per session.
+	MaxKeywords = 15_000
+	MaxParams   = 10_000
+	// MaxExportKeywords — lines written to keywords.txt (ranked, recon-ready).
+	MaxExportKeywords = 500
+	// MaxExportParams — unique params written to params.txt.
+	MaxExportParams = 500
+	// MinKeywordExportWeight — ignore low-weight noise during live export.
+	MinKeywordExportWeight = 8
 )
 
 type CrawlConfig struct {

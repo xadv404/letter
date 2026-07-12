@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/xadv404/letter/internal/config"
 	"github.com/xadv404/letter/internal/dorks"
 )
 
@@ -30,6 +32,10 @@ type Writer struct {
 	kwHeader       bool
 	pmHeader       bool
 	dorksHeader    bool
+	kwExported     int
+	kwSeen         map[string]struct{}
+	pmExported     int
+	pmSeen         map[string]struct{}
 	lastFlush      time.Time
 	flushEvery     time.Duration
 }
@@ -89,6 +95,8 @@ func New(outputDir string, resume bool) (*Writer, error) {
 		keywordsWriter: bufio.NewWriter(kwFile),
 		paramsWriter:   bufio.NewWriter(pmFile),
 		dorksWriter:    bufio.NewWriter(dorksFile),
+		kwSeen:         map[string]struct{}{},
+		pmSeen:         map[string]struct{}{},
 		flushEvery:     2 * time.Second,
 		lastFlush:      time.Now(),
 	}
@@ -111,24 +119,51 @@ func ts() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// WriteKeywordIncremental appends a keyword discovered during crawl.
-func (w *Writer) WriteKeywordIncremental(keyword string) error {
+// WriteKeywordIncremental appends a high-weight keyword during crawl (capped).
+func (w *Writer) WriteKeywordIncremental(keyword string, weight int) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if weight < config.MinKeywordExportWeight || w.kwExported >= config.MaxExportKeywords {
+		return nil
+	}
+	keyword = trimKey(keyword)
+	if keyword == "" {
+		return nil
+	}
+	if _, ok := w.kwSeen[keyword]; ok {
+		return nil
+	}
+	w.kwSeen[keyword] = struct{}{}
+	w.kwExported++
+
 	if !w.kwHeader {
 		if _, err := fmt.Fprintf(w.keywordsWriter, "# Letter Recon keywords — %s\n", ts()); err != nil {
 			return err
 		}
+		fmt.Fprintf(w.keywordsWriter, "# weight | keyword (live, max %d)\n", config.MaxExportKeywords)
 		w.kwHeader = true
 	}
-	_, err := fmt.Fprintf(w.keywordsWriter, "%s\t%s\n", ts(), keyword)
+	_, err := fmt.Fprintf(w.keywordsWriter, "%d\t%s\n", weight, keyword)
 	return err
 }
 
-// WriteParamIncremental appends a scored parameter discovered during crawl.
+// WriteParamIncremental appends a scored parameter during crawl (deduped, capped).
 func (w *Writer) WriteParamIncremental(name string, score int, tier string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.pmExported >= config.MaxExportParams {
+		return nil
+	}
+	name = trimKey(name)
+	if name == "" {
+		return nil
+	}
+	if _, ok := w.pmSeen[name]; ok {
+		return nil
+	}
+	w.pmSeen[name] = struct{}{}
+	w.pmExported++
+
 	if !w.pmHeader {
 		if _, err := fmt.Fprintf(w.paramsWriter, "# Letter Recon params — %s\n", ts()); err != nil {
 			return err
@@ -139,24 +174,20 @@ func (w *Writer) WriteParamIncremental(name string, score int, tier string) erro
 	return err
 }
 
-// ForceFlush writes all buffered data to disk immediately.
-func (w *Writer) ForceFlush() error {
+// WriteFinalExport rewrites keywords, params and dorks with curated final output.
+func (w *Writer) WriteFinalExport(m dorks.Materials, assembled []dorks.AssembledDork, rankedKeywords []KeywordExport) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for _, bw := range []*bufio.Writer{w.typesWriter, w.keywordsWriter, w.paramsWriter, w.dorksWriter} {
-		if err := bw.Flush(); err != nil {
-			return err
-		}
+
+	if err := w.rewriteKeywords(rankedKeywords, m.Phrases); err != nil {
+		return err
 	}
-	w.lastFlush = time.Now()
-	return nil
-}
-
-// WriteMaterials exports types, keywords, params and auto-assembled dorks.
-func (w *Writer) WriteMaterials(m dorks.Materials) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
+	if err := w.rewriteParams(m.Params, m.Paths); err != nil {
+		return err
+	}
+	if err := w.rewriteDorks(assembled); err != nil {
+		return err
+	}
 	if !w.typesHeader {
 		fmt.Fprintf(w.typesWriter, "# Letter Recon dork types — %s\n", ts())
 		fmt.Fprintf(w.typesWriter, "# family | volume | slots | pattern\n")
@@ -168,50 +199,118 @@ func (w *Writer) WriteMaterials(m dorks.Materials) error {
 			return err
 		}
 	}
-
-	if !w.kwHeader {
-		fmt.Fprintf(w.keywordsWriter, "# Letter Recon keywords — %s\n", ts())
-		w.kwHeader = true
-	}
-	for _, kw := range m.Keywords {
-		if _, err := fmt.Fprintf(w.keywordsWriter, "%s\t%s\n", ts(), kw); err != nil {
-			return err
-		}
-	}
-	for _, ph := range m.Phrases {
-		if _, err := fmt.Fprintf(w.keywordsWriter, "%s\t\"%s\"\n", ts(), ph); err != nil {
-			return err
-		}
-	}
-
-	if !w.pmHeader {
-		fmt.Fprintf(w.paramsWriter, "# Letter Recon params — %s\n", ts())
-		w.pmHeader = true
-	}
-	for _, pm := range m.Params {
-		if _, err := fmt.Fprintf(w.paramsWriter, "%s\t%s\n", ts(), pm); err != nil {
-			return err
-		}
-	}
-	for _, path := range m.Paths {
-		if _, err := fmt.Fprintf(w.paramsWriter, "%s\t#path:%s\n", ts(), path); err != nil {
-			return err
-		}
-	}
-
-	assembled := dorks.RankAssembled(m)
-	if !w.dorksHeader {
-		fmt.Fprintf(w.dorksWriter, "# Letter Recon dorks — %s\n", ts())
-		fmt.Fprintf(w.dorksWriter, "# score | tier | family | dork\n")
-		w.dorksHeader = true
-	}
-	for _, d := range assembled {
-		if _, err := fmt.Fprintf(w.dorksWriter, "%d | %s | %s | %s\n", d.Score, d.Tier, d.Family, d.Dork); err != nil {
-			return err
-		}
-	}
-
 	return w.flushLocked()
+}
+
+// KeywordExport is a ranked keyword for final export.
+type KeywordExport struct {
+	Keyword string
+	Weight  int
+}
+
+func (w *Writer) rewriteKeywords(ranked []KeywordExport, phrases []string) error {
+	if w.keywordsWriter != nil {
+		_ = w.keywordsWriter.Flush()
+	}
+	if w.keywordsFile != nil {
+		_ = w.keywordsFile.Close()
+	}
+	f, err := os.OpenFile(w.keywordsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	bw := bufio.NewWriter(f)
+	fmt.Fprintf(bw, "# Letter Recon keywords — %s\n", ts())
+	fmt.Fprintf(bw, "# weight | keyword (top %d ranked)\n", config.MaxExportKeywords)
+	for _, r := range ranked {
+		fmt.Fprintf(bw, "%d\t%s\n", r.Weight, r.Keyword)
+	}
+	for _, ph := range phrases {
+		fmt.Fprintf(bw, "%d\t\"%s\"\n", 0, ph)
+	}
+	if err := bw.Flush(); err != nil {
+		f.Close()
+		return err
+	}
+	w.keywordsFile = f
+	w.keywordsWriter = bufio.NewWriter(f)
+	w.kwHeader = true
+	return nil
+}
+
+func (w *Writer) rewriteParams(params, paths []string) error {
+	if w.paramsWriter != nil {
+		_ = w.paramsWriter.Flush()
+	}
+	if w.paramsFile != nil {
+		_ = w.paramsFile.Close()
+	}
+	f, err := os.OpenFile(w.paramsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	bw := bufio.NewWriter(f)
+	fmt.Fprintf(bw, "# Letter Recon params — %s\n", ts())
+	fmt.Fprintf(bw, "# top %d injectable params\n", config.MaxExportParams)
+	for _, pm := range params {
+		fmt.Fprintln(bw, pm)
+	}
+	for _, path := range paths {
+		fmt.Fprintf(bw, "#path:%s\n", path)
+	}
+	if err := bw.Flush(); err != nil {
+		f.Close()
+		return err
+	}
+	w.paramsFile = f
+	w.paramsWriter = bufio.NewWriter(f)
+	w.pmHeader = true
+	return nil
+}
+
+func (w *Writer) rewriteDorks(assembled []dorks.AssembledDork) error {
+	if w.dorksWriter != nil {
+		_ = w.dorksWriter.Flush()
+	}
+	if w.dorksFile != nil {
+		_ = w.dorksFile.Close()
+	}
+	f, err := os.OpenFile(w.dorksPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	bw := bufio.NewWriter(f)
+	fmt.Fprintf(bw, "# Letter Recon dorks — %s\n", ts())
+	fmt.Fprintf(bw, "# score | tier | family | dork (%d curated)\n", len(assembled))
+	for _, d := range assembled {
+		fmt.Fprintf(bw, "%d | %s | %s | %s\n", d.Score, d.Tier, d.Family, d.Dork)
+	}
+	if err := bw.Flush(); err != nil {
+		f.Close()
+		return err
+	}
+	w.dorksFile = f
+	w.dorksWriter = bufio.NewWriter(f)
+	w.dorksHeader = true
+	return nil
+}
+
+// WriteMaterials is deprecated — use WriteFinalExport.
+func (w *Writer) WriteMaterials(m dorks.Materials) error {
+	assembled := dorks.RankAssembled(m)
+	kw := make([]KeywordExport, len(m.Keywords))
+	for i, k := range m.Keywords {
+		kw[i] = KeywordExport{Keyword: k, Weight: m.KeywordScores[k]}
+	}
+	return w.WriteFinalExport(m, assembled, kw)
+}
+
+func trimKey(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) > 100 {
+		return s[:100]
+	}
+	return s
 }
 
 func joinSlots(slots []string) string {
@@ -225,13 +324,25 @@ func joinSlots(slots []string) string {
 	return s
 }
 
+func (w *Writer) ForceFlush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.flushAll()
+}
+
 func (w *Writer) flushLocked() error {
 	if time.Since(w.lastFlush) < w.flushEvery {
 		return nil
 	}
+	return w.flushAll()
+}
+
+func (w *Writer) flushAll() error {
 	for _, bw := range []*bufio.Writer{w.typesWriter, w.keywordsWriter, w.paramsWriter, w.dorksWriter} {
-		if err := bw.Flush(); err != nil {
-			return err
+		if bw != nil {
+			if err := bw.Flush(); err != nil {
+				return err
+			}
 		}
 	}
 	w.lastFlush = time.Now()
@@ -242,14 +353,14 @@ func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	var first error
-	for _, bw := range []*bufio.Writer{w.typesWriter, w.keywordsWriter, w.paramsWriter, w.dorksWriter} {
-		if err := bw.Flush(); err != nil && first == nil {
-			first = err
-		}
+	if err := w.flushAll(); err != nil && first == nil {
+		first = err
 	}
 	for _, f := range []*os.File{w.typesFile, w.keywordsFile, w.paramsFile, w.dorksFile} {
-		if err := f.Close(); err != nil && first == nil {
-			first = err
+		if f != nil {
+			if err := f.Close(); err != nil && first == nil {
+				first = err
+			}
 		}
 	}
 	return first

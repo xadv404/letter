@@ -126,7 +126,7 @@ func (e *Engine) emitSnapshot(phaseLabel string, running bool, dorkPreview strin
 	}
 	snap := e.throttle.Refresh(countGoroutines())
 	acc, rej := e.scorer.Stats()
-	kw := e.kw.Unique()
+	kw := len(e.kw.Top(config.MaxExportKeywords))
 	pm := e.scorer.Count()
 	e.dashboard.RecordSeries(kw, pm)
 	ui := e.dashboard.Snapshot(
@@ -448,7 +448,7 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		if len(kwResults) > 0 {
 			e.dashboard.AddKeywords(len(kwResults))
 			for _, r := range kwResults {
-				_ = e.exporter.WriteKeywordIncremental(r.Keyword)
+				_ = e.exporter.WriteKeywordIncremental(r.Keyword, r.Weight)
 			}
 		}
 		e.emitSnapshot(phaseLabel(int(e.phase.Load())), true, "")
