@@ -35,7 +35,6 @@
     resume: function () { return api("/api/resume", { method: "POST" }); },
     stop: function () { return api("/api/stop", { method: "POST" }); },
     getState: function () { return api("/api/state"); },
-    dorksURL: function () { return API + "/api/dorks"; },
     connectEvents: function (onEvent) {
       var es = new EventSource(API + "/api/events");
       es.onmessage = function (ev) {

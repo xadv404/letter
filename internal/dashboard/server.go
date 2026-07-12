@@ -36,7 +36,6 @@ func Run() error {
 	mux.Handle("/api/stop", corsMiddleware(http.HandlerFunc(app.handleStop)))
 	mux.Handle("/api/state", corsMiddleware(http.HandlerFunc(app.handleState)))
 	mux.Handle("/api/events", corsMiddleware(http.HandlerFunc(app.handleEvents)))
-	mux.Handle("/api/dorks", corsMiddleware(http.HandlerFunc(app.handleDorks)))
 	mux.Handle("/", http.FileServer(http.FS(content)))
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

@@ -280,20 +280,22 @@ func (a *App) handleStart(w http.ResponseWriter, r *http.Request) {
 				a.mu.Lock()
 				defer a.mu.Unlock()
 				if err != nil {
-					a.dorksPath = path
+					a.dorksPath = ""
 					a.appendLog("Erreur enregistrement: " + err.Error())
 				} else if cancelled {
-					a.dorksPath = path
-					a.appendLog("Enregistrement annulé — fichier temporaire: " + path)
+					_ = os.Remove(path)
+					a.dorksPath = ""
+					a.appendLog("Enregistrement annulé")
 				} else {
 					a.dorksPath = dest
+					_ = os.Remove(path)
 					a.appendLog("Dorks enregistrés → " + dest)
 				}
 				a.hub.Broadcast(mustJSON(map[string]any{
-					"type":       "dorks_ready",
-					"path":       a.dorksPath,
-					"saved":      !cancelled && err == nil,
-					"cancelled":  cancelled,
+					"type":      "dorks_ready",
+					"path":      a.dorksPath,
+					"saved":     !cancelled && err == nil,
+					"cancelled": cancelled,
 				}))
 			})
 		},
@@ -427,21 +429,6 @@ func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
-}
-
-func (a *App) handleDorks(w http.ResponseWriter, r *http.Request) {
-	a.mu.Lock()
-	path := a.dorksPath
-	if path == "" {
-		path = filepath.Join(a.cfg.OutputDir, "dorks.txt")
-	}
-	a.mu.Unlock()
-	if _, err := os.Stat(path); err != nil {
-		http.Error(w, "dorks not ready", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Disposition", `attachment; filename="dorks.txt"`)
-	http.ServeFile(w, r, path)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
