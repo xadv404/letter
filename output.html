@@ -29,62 +29,54 @@
         </div>
         <div class="nav-category"><div class="nav-category-label">Settings</div><a href="settings.html" class="nav-link"><span class="icon">⚙️</span> Configuration</a></div>
       </nav>
-      <div class="sidebar-footer"><a href="https://github.com/xadv404/letter/releases/latest">↓ Télécharger v1.0.1</a></div>
+      <div class="sidebar-footer"><a href="https://github.com/xadv404/letter/releases/latest">↓ Télécharger</a></div>
     </aside>
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
           <button class="menu-toggle" type="button" aria-label="Menu">☰</button>
-          <div><div class="page-title">Output</div><div class="page-subtitle">Fichiers générés · Extract</div></div>
+          <div><div class="page-title">Output</div><div class="page-subtitle">Résultat final · Dorks uniquement</div></div>
         </div>
-        <div class="topbar-badge"><span class="dot"></span> Export live</div>
+        <div class="topbar-badge"><span class="dot"></span> dorks.txt</div>
       </header>
       <div class="content">
         <div class="content-header">
-          <h1>Sorties</h1>
-          <p>Écriture incrémentale — rien n'attend la fin du crawl. Dorks exportables où vous voulez.</p>
+          <h1>Sortie — Google Dorks</h1>
+          <p>Seul livrable exporté : <code>dorks.txt</code>. Le crawl, les keywords et le scoring SQLi restent en mémoire pendant l'exécution.</p>
         </div>
-        <div class="file-grid">
-          <div class="file-tile">
-            <div class="file-phase">Phase 1</div>
-            <div class="file-name">urls_*.txt</div>
-            <div class="file-desc">URLs crawlées par domaine</div>
+
+        <div class="stats-grid">
+          <div class="stat-card violet">
+            <div class="label">Fichier</div>
+            <div class="value">dorks.txt</div>
+            <div class="hint">Une ligne = un dork</div>
           </div>
-          <div class="file-tile">
-            <div class="file-phase">Phase 2</div>
-            <div class="file-name">keywords_*.txt</div>
-            <div class="file-desc">Mots-clés pondérés</div>
+          <div class="stat-card cyan">
+            <div class="label">Format</div>
+            <div class="value">Google</div>
+            <div class="hint">inurl · intext · site · filetype</div>
           </div>
-          <div class="file-tile">
-            <div class="file-phase">Phase 3</div>
-            <div class="file-name">parameters_*.txt</div>
-            <div class="file-desc">Params scorés + tier</div>
-          </div>
-          <div class="file-tile">
-            <div class="file-phase">Phase 3</div>
-            <div class="file-name">targets_*.txt</div>
-            <div class="file-desc">URLs avec param HIGH</div>
-          </div>
-          <div class="file-tile">
-            <div class="file-phase">Phase 4</div>
-            <div class="file-name">dorks.txt</div>
-            <div class="file-desc">Google dorks (chemin libre)</div>
-          </div>
-          <div class="file-tile">
-            <div class="file-phase">État</div>
-            <div class="file-name">crawl.state.json</div>
-            <div class="file-desc">Pause / reprise</div>
-          </div>
-          <div class="file-tile">
-            <div class="file-phase">Cache</div>
-            <div class="file-name">seclists_burp_params.cache</div>
-            <div class="file-desc">Wordlist SecLists (7 jours)</div>
+          <div class="stat-card emerald">
+            <div class="label">Export</div>
+            <div class="value">Save as</div>
+            <div class="hint">Dialogue à la fin du crawl</div>
           </div>
         </div>
-        <div class="card" style="margin-top: 1.5rem;">
-          <div class="card-header"><div class="card-icon slate">📂</div><h3>Dossier par défaut</h3></div>
-          <p>Les fichiers sont écrits dans le dossier <code>output/</code> configuré dans Settings. Le fichier <code>dorks.txt</code> peut être enregistré ailleurs via le dialogue à la fin du crawl.</p>
+
+        <div class="card" style="margin-bottom: 1.5rem;">
+          <div class="card-header"><div class="card-icon violet">💾</div><h3>Comment ça marche</h3></div>
+          <ul>
+            <li>Pendant le crawl, les dorks sont écrites dans <code>output/dorks.txt</code></li>
+            <li>À la fin, la GUI ouvre « Enregistrer sous » pour choisir l'emplacement final</li>
+            <li>Si vous annulez, le fichier temporaire reste dans le dossier dorks output</li>
+            <li>Aucun fichier <code>urls_</code>, <code>keywords_</code> ou <code>parameters_</code> n'est généré</li>
+          </ul>
         </div>
+
+        <pre><code># Letter Recon dorks — generated 2026-07-12T13:00:00Z
+inurl:id= intext:admin site:example.com
+inurl:search_term= intext:"user search system"
+site:example.com filetype:php inurl:filter_by=</code></pre>
       </div>
     </div>
   </div>

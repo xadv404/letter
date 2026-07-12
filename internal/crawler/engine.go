@@ -268,13 +268,11 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		pages++
 
 		e.setPhase(2, "Phase 2/4 — Keyword extraction")
-		_ = e.exporter.WriteURL(hostKey, rawURL)
 
 		doc, err := html.Parse(strings.NewReader(body))
 		if err == nil {
-			for _, kr := range e.kw.Extract(hostKey, doc) {
-				_ = e.exporter.WriteKeyword(kr.Domain, kr.Keyword, kr.Weight, kr.Source)
-				e.dashboard.AddKeywords(1)
+			if krs := e.kw.Extract(hostKey, doc); len(krs) > 0 {
+				e.dashboard.AddKeywords(len(krs))
 			}
 		}
 
@@ -282,16 +280,14 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 			if sameHost(u, link) && !visited[link] {
 				queue = append(queue, link)
 			}
-			for _, pr := range e.scorer.ScoreURL(hostKey, link, e.cfg.MinParamScore) {
-				_ = e.exporter.WriteParameter(pr.Domain, pr.URL, pr.Name, pr.Score, string(pr.Tier), pr.Matched)
-				e.dashboard.AddParams(1)
+			if scored := e.scorer.ScoreURL(hostKey, link, e.cfg.MinParamScore); len(scored) > 0 {
+				e.dashboard.AddParams(len(scored))
 			}
 		}
 
 		e.setPhase(3, "Phase 3/4 — SQLi parameter scoring")
-		for _, pr := range e.scorer.ScoreURL(hostKey, rawURL, e.cfg.MinParamScore) {
-			_ = e.exporter.WriteParameter(pr.Domain, pr.URL, pr.Name, pr.Score, string(pr.Tier), pr.Matched)
-			e.dashboard.AddParams(1)
+		if scored := e.scorer.ScoreURL(hostKey, rawURL, e.cfg.MinParamScore); len(scored) > 0 {
+			e.dashboard.AddParams(len(scored))
 		}
 
 		e.dashboard.UpdateDomain(hostKey, pages, errors, false)
@@ -300,10 +296,6 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 
 	e.dashboard.UpdateDomain(hostKey, pages, errors, true)
 	e.persist(hostKey, pages, errors, true, visited, queue)
-
-	for _, flagged := range e.scorer.FlaggedURLs(hostKey) {
-		_ = e.exporter.WriteTarget(flagged.Domain, flagged.URL, flagged.HighParams, flagged.MaxScore)
-	}
 }
 
 func (e *Engine) fetch(ctx context.Context, rawURL string) (string, []string, error) {

@@ -165,7 +165,7 @@ func (a *App) build() fyne.CanvasObject {
 	configCard := widget.NewCard("Configuration", "4-phase recon pipeline",
 		container.NewVBox(
 			container.NewBorder(nil, nil, widget.NewLabel("Domains file"), browseBtn, a.domainFile),
-			container.NewBorder(nil, nil, widget.NewLabel("Output dir"), nil, a.outputDir),
+			container.NewBorder(nil, nil, widget.NewLabel("Dorks output"), nil, a.outputDir),
 			widget.NewSeparator(),
 			a.labeledSlider("Depth", a.depth, func(v float64) string { return fmt.Sprintf("%.0f", v) }),
 			a.labeledSlider("Pages / domain", a.pages, func(v float64) string { return fmt.Sprintf("%.0f", v) }),
@@ -259,7 +259,7 @@ func (a *App) onStart() {
 		OnSnapshot: a.applySnapshot,
 		OnLog:      a.appendLog,
 		OnDorksDone: func(dorksPath string) {
-			a.promptSaveDorks(dorksPath, cfg.OutputDir)
+			a.promptSaveDorks(dorksPath)
 		},
 	}
 
@@ -290,12 +290,12 @@ func (a *App) onStart() {
 		if err != nil {
 			dialog.ShowError(err, a.window)
 		} else {
-			a.appendLog("Recon complete — autres résultats dans " + cfg.OutputDir)
+			a.appendLog("Recon complete — enregistrez vos dorks")
 		}
 	}()
 }
 
-func (a *App) promptSaveDorks(srcPath, outputDir string) {
+func (a *App) promptSaveDorks(srcPath string) {
 	d := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("save dialog: %w", err), a.window)
@@ -305,7 +305,7 @@ func (a *App) promptSaveDorks(srcPath, outputDir string) {
 			a.appendLog("Enregistrement des dorks annulé")
 			dialog.ShowInformation(
 				"Terminé",
-				"Dorks temporaires dans :\n"+srcPath+"\n\nAutres fichiers dans :\n"+outputDir,
+				"Dorks temporaires dans :\n"+srcPath,
 				a.window,
 			)
 			return
@@ -329,7 +329,7 @@ func (a *App) promptSaveDorks(srcPath, outputDir string) {
 		a.appendLog("Dorks enregistrés → " + saved)
 		dialog.ShowInformation(
 			"Dorks enregistrés",
-			"Fichier sauvegardé :\n"+saved+"\n\nKeywords, params, URLs :\n"+outputDir,
+			"Fichier sauvegardé :\n"+saved,
 			a.window,
 		)
 	}, a.window)
