@@ -11,12 +11,13 @@ import (
 
 func (e *Engine) generateDorks(domains []string) string {
 	fp := dorks.NewFingerprint()
+	var provenURLs []string
 
 	for _, domain := range domains {
 		rawHost, _ := dorks.SiteScope(domain)
 		host := NormalizeHost(rawHost)
 
-		for _, r := range e.kw.TopForDomain(host, 60) {
+		for _, r := range e.kw.TopForDomain(host, 40) {
 			fp.AddTerm(r.Keyword)
 		}
 		for _, path := range e.kw.TopPathsForDomain(host, 50) {
@@ -26,6 +27,7 @@ func (e *Engine) generateDorks(domains []string) string {
 			fp.AddParameter(r.Name)
 		}
 		for _, flagged := range e.scorer.FlaggedURLs(host) {
+			provenURLs = append(provenURLs, flagged.URL)
 			fp.AddURLPaths(flagged.URL)
 			for _, p := range flagged.HighParams {
 				fp.AddParameter(p)
@@ -45,7 +47,7 @@ func (e *Engine) generateDorks(domains []string) string {
 
 	seedTerms := append([]string{}, fp.Keywords...)
 	seedTerms = append(seedTerms, fp.Phrases...)
-	expanded := keywords.ExpandAutocomplete(seedTerms, 12)
+	expanded := keywords.ExpandAutocomplete(seedTerms, 8)
 	for _, term := range expanded {
 		fp.AddTerm(term)
 	}
@@ -62,22 +64,29 @@ func (e *Engine) generateDorks(domains []string) string {
 	}
 
 	e.log(fmt.Sprintf(
-		"[Phase 4] Empreinte injectable (%d seeds): %d params, %d keywords, %d paths",
-		len(domains), len(fp.Parameters), len(fp.Keywords), len(fp.Paths),
+		"[Phase 4] Empreinte (%d seeds): %d params, %d paths, %d URLs prouvées",
+		len(domains), len(fp.Parameters), len(fp.Paths), len(provenURLs),
 	))
 
-	generated := e.dorks.GenerateFingerprint(*fp)
-	for _, dork := range generated {
+	set := e.dorks.GenerateExploitable(*fp, provenURLs)
+
+	for _, dork := range set.Exploitable {
+		_ = e.exporter.WriteExploitableDork(dork)
+	}
+	for _, dork := range set.All {
 		_ = e.exporter.WriteDork(dork)
 	}
 
-	e.log(fmt.Sprintf("[Phase 4] %d dorks blast injectables (volume max)", len(generated)))
-	preview := dorks.PreviewList(generated, 12)
+	e.log(fmt.Sprintf(
+		"[Phase 4] %d dorks exploitables (PRIORITAIRES) + %d volume → dorks_exploitable.txt d'abord",
+		len(set.Exploitable), len(set.All),
+	))
+	preview := dorks.PreviewList(set.Exploitable, 12)
 	e.log(preview)
 	return strings.Join([]string{
-		fmt.Sprintf("Injectable fingerprint: %d params / %d kw / %d paths",
-			len(fp.Parameters), len(fp.Keywords), len(fp.Paths)),
-		fmt.Sprintf("Generated %d dorks", len(generated)),
+		fmt.Sprintf("Exploitable: %d dorks (run first) | Volume: %d dorks",
+			len(set.Exploitable), len(set.All)),
+		fmt.Sprintf("Files: dorks_exploitable.txt → dorks.txt"),
 		preview,
 	}, "\n")
 }

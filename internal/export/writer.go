@@ -10,14 +10,18 @@ import (
 )
 
 type Writer struct {
-	mu          sync.Mutex
-	outputDir   string
-	dorksPath   string
-	dorks       *os.File
-	dorkWriter  *bufio.Writer
-	dorksHeader bool
-	lastFlush   time.Time
-	flushEvery  time.Duration
+	mu              sync.Mutex
+	outputDir       string
+	dorksPath       string
+	exploitablePath string
+	dorks           *os.File
+	exploitable     *os.File
+	dorkWriter      *bufio.Writer
+	exploitWriter   *bufio.Writer
+	dorksHeader     bool
+	exploitHeader   bool
+	lastFlush       time.Time
+	flushEvery      time.Duration
 }
 
 func New(outputDir string) (*Writer, error) {
@@ -25,33 +29,51 @@ func New(outputDir string) (*Writer, error) {
 		return nil, err
 	}
 	dorkPath := filepath.Join(outputDir, "dorks.txt")
+	exploitPath := filepath.Join(outputDir, "dorks_exploitable.txt")
 
 	dorkFile, err := os.OpenFile(dorkPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return nil, err
 	}
+	exploitFile, err := os.OpenFile(exploitPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		dorkFile.Close()
+		return nil, err
+	}
 
 	return &Writer{
-		outputDir:  outputDir,
-		dorksPath:  dorkPath,
-		dorks:      dorkFile,
-		dorkWriter: bufio.NewWriter(dorkFile),
-		flushEvery: 2 * time.Second,
-		lastFlush:  time.Now(),
+		outputDir:       outputDir,
+		dorksPath:       dorkPath,
+		exploitablePath: exploitPath,
+		dorks:           dorkFile,
+		exploitable:     exploitFile,
+		dorkWriter:      bufio.NewWriter(dorkFile),
+		exploitWriter:   bufio.NewWriter(exploitFile),
+		flushEvery:      2 * time.Second,
+		lastFlush:       time.Now(),
 	}, nil
 }
 
 func (w *Writer) WriteDork(line string) error {
+	return w.writeLine(w.dorks, &w.dorkWriter, &w.dorksHeader, "dorks", line)
+}
+
+// WriteExploitableDork writes a high-confidence SQLi dork (run these first on Google).
+func (w *Writer) WriteExploitableDork(line string) error {
+	return w.writeLine(w.exploitable, &w.exploitWriter, &w.exploitHeader, "exploitable SQLi dorks", line)
+}
+
+func (w *Writer) writeLine(f *os.File, bw **bufio.Writer, header *bool, label, line string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if !w.dorksHeader {
+	if !*header {
 		ts := time.Now().UTC().Format(time.RFC3339)
-		if _, err := fmt.Fprintf(w.dorkWriter, "# Letter Recon dorks — generated %s\n", ts); err != nil {
+		if _, err := fmt.Fprintf(*bw, "# Letter Recon %s — generated %s\n", label, ts); err != nil {
 			return err
 		}
-		w.dorksHeader = true
+		*header = true
 	}
-	if _, err := fmt.Fprintln(w.dorkWriter, line); err != nil {
+	if _, err := fmt.Fprintln(*bw, line); err != nil {
 		return err
 	}
 	return w.maybeFlush()
@@ -62,6 +84,9 @@ func (w *Writer) maybeFlush() error {
 		return nil
 	}
 	if err := w.dorkWriter.Flush(); err != nil {
+		return err
+	}
+	if err := w.exploitWriter.Flush(); err != nil {
 		return err
 	}
 	w.lastFlush = time.Now()
@@ -75,7 +100,13 @@ func (w *Writer) Close() error {
 	if err := w.dorkWriter.Flush(); err != nil {
 		first = err
 	}
+	if err := w.exploitWriter.Flush(); err != nil && first == nil {
+		first = err
+	}
 	if err := w.dorks.Close(); err != nil && first == nil {
+		first = err
+	}
+	if err := w.exploitable.Close(); err != nil && first == nil {
 		first = err
 	}
 	return first
@@ -84,6 +115,11 @@ func (w *Writer) Close() error {
 // DorksPath returns the path to the generated dorks file.
 func (w *Writer) DorksPath() string {
 	return w.dorksPath
+}
+
+// ExploitableDorksPath returns high-confidence SQLi dorks (run first).
+func (w *Writer) ExploitableDorksPath() string {
+	return w.exploitablePath
 }
 
 // OutputDir returns the configured output directory.
