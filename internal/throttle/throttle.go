@@ -1,12 +1,11 @@
 package throttle
 
 import (
-	"bufio"
-	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 type Level int
@@ -54,9 +53,6 @@ type Controller struct {
 	baseWorkers   int
 
 	current Snapshot
-
-	prevIdle  uint64
-	prevTotal uint64
 }
 
 func New(delayMS, depth, pageLimit, workers int) *Controller {
@@ -78,7 +74,7 @@ func New(delayMS, depth, pageLimit, workers int) *Controller {
 }
 
 func (c *Controller) Refresh(goroutines int) Snapshot {
-	cpuVal := c.readCPU()
+	cpuVal := readCPU()
 	ramVal := readRAM()
 
 	level := classify(cpuVal, ramVal)
@@ -108,86 +104,27 @@ func (c *Controller) Current() Snapshot {
 	return c.current
 }
 
-func (c *Controller) readCPU() float64 {
-	idle, total, ok := readProcStat()
-	if !ok || c.prevTotal == 0 {
-		c.prevIdle, c.prevTotal = idle, total
+func readCPU() float64 {
+	pcts, err := cpu.Percent(200*time.Millisecond, false)
+	if err != nil || len(pcts) == 0 {
 		return 0
 	}
-	idleDelta := float64(idle - c.prevIdle)
-	totalDelta := float64(total - c.prevTotal)
-	c.prevIdle, c.prevTotal = idle, total
-	if totalDelta <= 0 {
+	v := pcts[0]
+	if v < 0 {
 		return 0
 	}
-	usage := (1.0 - idleDelta/totalDelta) * 100
-	if usage < 0 {
-		return 0
-	}
-	if usage > 100 {
+	if v > 100 {
 		return 100
 	}
-	return usage
-}
-
-func readProcStat() (idle, total uint64, ok bool) {
-	f, err := os.Open("/proc/stat")
-	if err != nil {
-		return 0, 0, false
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	if !sc.Scan() {
-		return 0, 0, false
-	}
-	fields := strings.Fields(sc.Text())
-	if len(fields) < 5 || fields[0] != "cpu" {
-		return 0, 0, false
-	}
-	for i := 1; i < len(fields); i++ {
-		v, err := strconv.ParseUint(fields[i], 10, 64)
-		if err != nil {
-			return 0, 0, false
-		}
-		total += v
-		if i == 4 {
-			idle = v
-		}
-	}
-	return idle, total, true
+	return v
 }
 
 func readRAM() float64 {
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
+	info, err := mem.VirtualMemory()
+	if err != nil || info == nil {
 		return 0
 	}
-	defer f.Close()
-	var total, available float64
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := sc.Text()
-		if strings.HasPrefix(line, "MemTotal:") {
-			total = parseKB(line)
-		}
-		if strings.HasPrefix(line, "MemAvailable:") {
-			available = parseKB(line)
-		}
-	}
-	if total == 0 {
-		return 0
-	}
-	used := total - available
-	return (used / total) * 100
-}
-
-func parseKB(line string) float64 {
-	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return 0
-	}
-	v, _ := strconv.ParseFloat(fields[1], 64)
-	return v
+	return info.UsedPercent
 }
 
 func classify(cpu, ram float64) Level {
