@@ -170,7 +170,14 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 	e.setPhase(4, "Phase 4/4 — Google Dork generation")
 	preview := e.generateDorks(domains)
 	e.emitSnapshot("Complete", false, preview)
-	return e.exporter.Close()
+	dorksPath := e.exporter.DorksPath()
+	if err := e.exporter.Close(); err != nil {
+		return err
+	}
+	if e.events.OnDorksDone != nil && dorksPath != "" {
+		e.events.OnDorksDone(dorksPath)
+	}
+	return nil
 }
 
 func (e *Engine) monitorLoop(done <-chan struct{}) {

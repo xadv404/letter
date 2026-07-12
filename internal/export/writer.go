@@ -12,6 +12,7 @@ import (
 type Writer struct {
 	mu           sync.Mutex
 	outputDir    string
+	dorksPath    string
 	keywords     *os.File
 	params       *os.File
 	urls         *os.File
@@ -71,6 +72,7 @@ func New(outputDir string) (*Writer, error) {
 
 	return &Writer{
 		outputDir:    outputDir,
+		dorksPath:    dorkPath,
 		keywords:     kwFile,
 		params:       paramFile,
 		urls:         urlFile,
@@ -177,4 +179,9 @@ func (w *Writer) Close() error {
 		}
 	}
 	return first
+}
+
+// DorksPath returns the path to the generated dorks file.
+func (w *Writer) DorksPath() string {
+	return w.dorksPath
 }

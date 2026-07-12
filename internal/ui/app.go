@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/xadv404/letter/internal/config"
@@ -256,6 +258,9 @@ func (a *App) onStart() {
 	events := crawler.Events{
 		OnSnapshot: a.applySnapshot,
 		OnLog:      a.appendLog,
+		OnDorksDone: func(dorksPath string) {
+			a.promptSaveDorks(dorksPath, cfg.OutputDir)
+		},
 	}
 
 	engine, err := crawler.NewWithEvents(cfg, events)
@@ -285,10 +290,52 @@ func (a *App) onStart() {
 		if err != nil {
 			dialog.ShowError(err, a.window)
 		} else {
-			a.appendLog("Recon complete — see ./output/dorks.txt")
-			dialog.ShowInformation("Done", "Pipeline complete.\nResults in "+cfg.OutputDir, a.window)
+			a.appendLog("Recon complete — autres résultats dans " + cfg.OutputDir)
 		}
 	}()
+}
+
+func (a *App) promptSaveDorks(srcPath, outputDir string) {
+	d := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("save dialog: %w", err), a.window)
+			return
+		}
+		if writer == nil {
+			a.appendLog("Enregistrement des dorks annulé")
+			dialog.ShowInformation(
+				"Terminé",
+				"Dorks temporaires dans :\n"+srcPath+"\n\nAutres fichiers dans :\n"+outputDir,
+				a.window,
+			)
+			return
+		}
+		defer writer.Close()
+
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("read dorks: %w", err), a.window)
+			return
+		}
+		if _, err := writer.Write(data); err != nil {
+			dialog.ShowError(fmt.Errorf("write dorks: %w", err), a.window)
+			return
+		}
+
+		saved := writer.URI().Path()
+		if saved == "" {
+			saved = writer.URI().String()
+		}
+		a.appendLog("Dorks enregistrés → " + saved)
+		dialog.ShowInformation(
+			"Dorks enregistrés",
+			"Fichier sauvegardé :\n"+saved+"\n\nKeywords, params, URLs :\n"+outputDir,
+			a.window,
+		)
+	}, a.window)
+	d.SetFileName("dorks.txt")
+	d.SetFilter(storage.NewExtensionFileFilter([]string{".txt"}))
+	d.Show()
 }
 
 func (a *App) onPause() {
