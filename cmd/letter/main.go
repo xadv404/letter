@@ -11,13 +11,12 @@ import (
 
 	"github.com/xadv404/letter/internal/config"
 	"github.com/xadv404/letter/internal/crawler"
-	"github.com/xadv404/letter/internal/ui"
 )
 
 func main() {
 	if len(os.Args) > 1 && (os.Args[1] == "-gui" || os.Args[1] == "--gui") {
-		ui.Run()
-		return
+		fmt.Fprintln(os.Stderr, "Desktop UI: run letter-gui (same folder as this binary)")
+		os.Exit(1)
 	}
 
 	runCLI()

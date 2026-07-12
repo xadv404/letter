@@ -1,5 +1,6 @@
 /letter
 /letter-gui
+dist/
 output/
 output-real/
 *.exe
