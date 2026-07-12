@@ -6,28 +6,19 @@ import (
 	"strings"
 
 	"github.com/xadv404/letter/internal/dorks"
-	"github.com/xadv404/letter/internal/keywords"
 )
 
 func (e *Engine) generateDorks(domains []string) string {
 	fp := dorks.NewFingerprint()
-	var provenURLs []string
 
 	for _, domain := range domains {
 		rawHost, _ := dorks.SiteScope(domain)
 		host := NormalizeHost(rawHost)
 
-		for _, r := range e.kw.TopForDomain(host, 40) {
-			fp.AddTerm(r.Keyword)
-		}
-		for _, path := range e.kw.TopPathsForDomain(host, 50) {
-			fp.AddPath(path)
-		}
-		for _, r := range e.scorer.TopInjectableParams(host, 100) {
+		for _, r := range e.scorer.TopInjectableParams(host, 50) {
 			fp.AddParameter(r.Name)
 		}
 		for _, flagged := range e.scorer.FlaggedURLs(host) {
-			provenURLs = append(provenURLs, flagged.URL)
 			fp.AddURLPaths(flagged.URL)
 			for _, p := range flagged.HighParams {
 				fp.AddParameter(p)
@@ -40,53 +31,32 @@ func (e *Engine) generateDorks(domains []string) string {
 		}
 	}
 
-	rawParams := append([]string{}, fp.Parameters...)
-	for _, p := range dorks.ExpandInjectableParams(rawParams) {
+	for _, p := range dorks.ExpandInjectableParams(fp.Parameters) {
 		fp.AddParameter(p)
-	}
-
-	seedTerms := append([]string{}, fp.Keywords...)
-	seedTerms = append(seedTerms, fp.Phrases...)
-	expanded := keywords.ExpandAutocomplete(seedTerms, 8)
-	for _, term := range expanded {
-		fp.AddTerm(term)
-	}
-	if len(expanded) > 0 {
-		e.log(fmt.Sprintf("[Enrichment] +%d keywords via autocomplete", len(expanded)))
 	}
 
 	fp.Finalize()
 
 	if !fp.Viable() {
-		msg := "[Phase 4] Aucun param injectable — crawl plus de pages avec query strings"
-		e.log(msg)
+		e.log("[Phase 4] Aucun param — crawl des seeds avec query strings (?id=, ?cat=)")
 		return "No dorks generated."
 	}
 
-	e.log(fmt.Sprintf(
-		"[Phase 4] Empreinte (%d seeds): %d params, %d paths, %d URLs prouvées",
-		len(domains), len(fp.Parameters), len(fp.Paths), len(provenURLs),
-	))
+	set := dorks.GenerateURLVolume(fp.Parameters)
 
-	set := e.dorks.GenerateExploitable(*fp, provenURLs)
-
-	for _, dork := range set.Exploitable {
-		_ = e.exporter.WriteExploitableDork(dork)
-	}
 	for _, dork := range set.All {
 		_ = e.exporter.WriteDork(dork)
 	}
 
 	e.log(fmt.Sprintf(
-		"[Phase 4] %d dorks ELITE (cible 1-2 vuln/1000 URLs) → dorks_exploitable.txt",
-		len(set.Exploitable),
+		"[Phase 4] %d dorks URL-VOLUME (cible 200-500k URLs) → dorks.txt",
+		len(set.All),
 	))
-	preview := dorks.PreviewList(set.Exploitable, 15)
+	preview := dorks.PreviewList(set.All, len(set.All))
 	e.log(preview)
 	return strings.Join([]string{
-		fmt.Sprintf("Elite: %d dorks (1-2 vuln/1000) | Volume optionnel: %d",
-			len(set.Exploitable), len(set.All)),
-		"→ Lance UNIQUEMENT dorks_exploitable.txt sur Google",
+		fmt.Sprintf("%d dorks ultra-larges — ~5-10k URLs/dork → 200-500k total", len(set.All)),
+		"Lance chaque dork sur Google (paginer au max)",
 		preview,
 	}, "\n")
 }

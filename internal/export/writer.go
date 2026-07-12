@@ -68,7 +68,7 @@ func (w *Writer) writeLine(f *os.File, bw **bufio.Writer, header *bool, label, l
 	defer w.mu.Unlock()
 	if !*header {
 		ts := time.Now().UTC().Format(time.RFC3339)
-		if _, err := fmt.Fprintf(*bw, "# Letter Recon %s — generated %s\n", label, ts); err != nil {
+		if _, err := fmt.Fprintf(*bw, "# Letter Recon %s — generated %s\n# ~50 dorks × ~5-10k URLs = 200-500k URLs target\n", label, ts); err != nil {
 			return err
 		}
 		*header = true
