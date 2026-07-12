@@ -2,18 +2,9 @@ package dorks
 
 import "strings"
 
-// coreInjectable are always merged into dork params for volume SQLi hunting.
-var coreInjectable = []string{
-	"id", "pid", "cid", "nid", "gid", "tid", "uid", "sid",
-	"cat", "catid", "cat_id", "category", "category_id",
-	"product_id", "item_id", "article_id", "page_id", "user_id", "order_id",
-	"search_term", "filter_by", "query", "q", "keyword", "search", "filter",
-	"num", "idx", "ref", "code",
-}
-
 var classicInjectable = func() map[string]struct{} {
-	m := make(map[string]struct{}, len(coreInjectable))
-	for _, p := range coreInjectable {
+	m := make(map[string]struct{}, len(burpTopInjectable))
+	for _, p := range burpTopInjectable {
 		m[p] = struct{}{}
 	}
 	return m
@@ -99,8 +90,33 @@ func ExpandInjectableParams(params []string) []string {
 			add("query")
 		}
 	}
-	for _, p := range coreInjectable {
+	for _, p := range burpTopInjectable {
 		add(p)
+	}
+	return out
+}
+
+// PrioritizeInjectable sorts params: injectable first, capped at max.
+func PrioritizeInjectable(params []string, max int) []string {
+	if max <= 0 || len(params) <= max {
+		return params
+	}
+	var primary, rest []string
+	seen := map[string]struct{}{}
+	for _, p := range params {
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		if isPrimaryInjectable(p) {
+			primary = append(primary, p)
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	out := append(primary, rest...)
+	if len(out) > max {
+		out = out[:max]
 	}
 	return out
 }

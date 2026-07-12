@@ -9,80 +9,53 @@ var classicScripts = []string{
 	"search", "results", "profile", "user", "member", "download", "redirect", "content",
 	"event", "events", "photo", "image", "video", "forum", "thread", "post", "comment",
 	"admin", "login", "register", "order", "checkout", "invoice", "report", "print",
+	"shop", "buy", "store", "browse", "info", "main", "home", "default", "file", "get",
 }
 
-// pathContexts are URL segments that correlate with database-backed pages.
-var pathContexts = []string{
-	"admin", "login", "search", "product", "products", "view", "item", "detail",
-	"list", "page", "catalog", "shop", "category", "article", "news", "member",
-	"profile", "cart", "checkout", "forum", "gallery", "download",
-}
+// stackExtensions for filetype/ext filters.
+var stackExtensions = []string{"php", "asp", "aspx", "jsp", "cfm", "pl", "cgi"}
 
-var stackExtensions = []string{"php", "asp", "aspx", "jsp", "cfm"}
-
-// volumeParamTemplates are high-yield dorks without intext:keyword (max Google results).
-func volumeParamTemplates() []func(param string) string {
-	out := []func(string) string{
-		func(pm string) string { return fmt.Sprintf(`inurl:%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:"%s="`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:%s&`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:?%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:&%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:.php?%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:.asp?%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:.aspx?%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:.jsp?%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:.cfm?%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:.php? inurl:%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`inurl:.asp? inurl:%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`ext:php inurl:? inurl:%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`ext:asp inurl:? inurl:%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`ext:aspx inurl:? inurl:%s=`, pm) },
-		func(pm string) string { return fmt.Sprintf(`allinurl:%s =`, pm) },
+// applyInjectableErrors — error-leak dorks (pages already broken = injectable).
+func applyInjectableErrors(param string) []string {
+	templates := []string{
+		`intext:"You have an error in your SQL syntax" inurl:%s=`,
+		`intext:"mysql_fetch" inurl:%s=`,
+		`intext:"Warning: mysql" inurl:%s=`,
+		`intext:"Unclosed quotation mark" inurl:%s=`,
+		`intext:"ORA-01756" inurl:%s=`,
+		`intext:"Microsoft OLE DB Provider" inurl:%s=`,
+		`intext:"PostgreSQL query failed" inurl:%s=`,
+		`intext:"SQL syntax" inurl:%s=`,
+		`intext:"mysql_num_rows" inurl:%s=`,
+		`intext:"mysqli_" inurl:%s=`,
+		`intext:"pg_query" inurl:%s=`,
+		`intext:"sqlite_" inurl:%s=`,
 	}
+	out := make([]string, 0, len(templates))
+	for _, t := range templates {
+		out = append(out, fmt.Sprintf(t, param))
+	}
+	return out
+}
+
+// applyStackFiletype — param + stack (2 operators max, injectable focus).
+func applyStackFiletype(param string) []string {
+	var out []string
 	for _, ext := range stackExtensions {
-		e := ext
-		out = append(out, func(pm string) string {
-			return fmt.Sprintf(`filetype:%s inurl:%s=`, e, pm)
-		})
-	}
-	for _, ctx := range pathContexts {
-		c := ctx
-		out = append(out, func(pm string) string {
-			return fmt.Sprintf(`inurl:%s inurl:%s=`, c, pm)
-		})
-	}
-	for _, script := range classicScripts {
-		s := script
-		out = append(out, func(pm string) string {
-			return fmt.Sprintf(`inurl:%s.php inurl:%s=`, s, pm)
-		})
-		out = append(out, func(pm string) string {
-			return fmt.Sprintf(`inurl:%s.asp inurl:%s=`, s, pm)
-		})
+		out = append(out,
+			fmt.Sprintf(`filetype:%s inurl:%s=`, ext, param),
+			fmt.Sprintf(`ext:%s inurl:?%s=`, ext, param),
+		)
 	}
 	return out
 }
 
-func applyVolumeParam(param string) []string {
-	fns := volumeParamTemplates()
-	out := make([]string, 0, len(fns))
-	for _, fn := range fns {
-		out = append(out, fn(param))
-	}
-	return out
-}
-
-func applyVolumePath(path, param string) []string {
+// applySimplePath — top paths only, 2 operators max.
+func applySimplePath(path, param string) []string {
 	return []string{
-		fmt.Sprintf(`inurl:%s inurl:%s=`, path, param),
-		fmt.Sprintf(`inurl:%s.php inurl:%s=`, path, param),
-		fmt.Sprintf(`inurl:%s.asp inurl:%s=`, path, param),
-		fmt.Sprintf(`allinurl:%s %s`, path, param),
-		fmt.Sprintf(`inurl:%s/ inurl:%s=`, path, param),
-		fmt.Sprintf(`inurl:%s filetype:php inurl:%s=`, path, param),
-		fmt.Sprintf(`inurl:%s filetype:asp inurl:%s=`, path, param),
 		fmt.Sprintf(`inurl:%s?%s=`, path, param),
+		fmt.Sprintf(`inurl:%s.%s?%s=`, path, "php", param),
+		fmt.Sprintf(`inurl:%s/ inurl:%s=`, path, param),
 	}
 }
 
@@ -92,20 +65,34 @@ func applyMultiParam(params []string) []string {
 	if n < 2 {
 		return nil
 	}
-	if n > 25 {
-		n = 25
+	if n > 40 {
+		n = 40
 		params = params[:n]
 	}
 	for i := 0; i < n; i++ {
-		for j := i + 1; j < n && j < i+6; j++ {
+		for j := i + 1; j < n && j < i+10; j++ {
 			a, b := params[i], params[j]
 			out = append(out,
 				fmt.Sprintf(`inurl:%s= inurl:%s=`, a, b),
+				fmt.Sprintf(`inurl:.php?%s= inurl:%s=`, a, b),
 				fmt.Sprintf(`allinurl:%s %s`, a, b),
-				fmt.Sprintf(`inurl:.php? inurl:%s= inurl:%s=`, a, b),
 				fmt.Sprintf(`inurl:%s= inurl:%s&`, a, b),
+				fmt.Sprintf(`"%s=" "%s="`, a, b),
 			)
 		}
 	}
 	return out
+}
+
+// volumeParamTemplates kept for TemplateCount; simplified secondary tier.
+func volumeParamTemplates() []func(param string) string {
+	return ultraSimpleTemplates()
+}
+
+func applyVolumeParam(param string) []string {
+	return applyUltraSimple(param)
+}
+
+func applyVolumePath(path, param string) []string {
+	return applySimplePath(path, param)
 }

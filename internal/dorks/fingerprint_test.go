@@ -32,11 +32,11 @@ func TestGenerateFingerprintVolume(t *testing.T) {
 	}
 	paramOnly := 0
 	for _, d := range out {
-		if strings.HasPrefix(d, "inurl:id=") || strings.HasPrefix(d, "inurl:cat=") {
+		if strings.Contains(d, "inurl:id=") || strings.Contains(d, "inurl:cat=") || strings.Contains(d, "?id=") {
 			paramOnly++
 		}
 	}
-	if paramOnly < 20 {
+	if paramOnly < 10 {
 		t.Fatalf("expected many param-only dorks, got %d", paramOnly)
 	}
 }
@@ -52,8 +52,8 @@ func TestGenerateFingerprintExpandedVolume(t *testing.T) {
 
 	g := New()
 	out := g.GenerateFingerprint(*fp)
-	if len(out) < 3000 {
-		t.Fatalf("expected 3000+ dorks with expanded injectable params, got %d", len(out))
+	if len(out) < 15000 {
+		t.Fatalf("expected 15000+ blast dorks with expanded injectable params, got %d", len(out))
 	}
 }
 

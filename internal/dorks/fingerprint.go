@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	maxKeywords   = 80
-	maxPhrases    = 40
-	maxParameters = 120
-	maxPaths      = 80
+	maxKeywords   = 60
+	maxPhrases    = 20
+	maxParameters = 200
+	maxPaths      = 100
+	maxPathDorks  = 15 // only top N paths used in dork matrix
 )
 
 // Fingerprint holds crawl-derived signals used to find unknown clone sites.
@@ -104,14 +105,22 @@ func (f *Fingerprint) AddURLPaths(rawURL string) {
 }
 
 func (f *Fingerprint) Finalize() {
+	f.Parameters = PrioritizeInjectable(f.Parameters, maxParameters)
 	f.Phrases = capStrings(f.Phrases, maxPhrases)
 	f.Keywords = capStrings(f.Keywords, maxKeywords)
-	f.Parameters = capStrings(f.Parameters, maxParameters)
 	f.Paths = capStrings(f.Paths, maxPaths)
 	sort.Strings(f.Keywords)
 	sort.Strings(f.Phrases)
 	sort.Strings(f.Parameters)
 	sort.Strings(f.Paths)
+}
+
+// TopPaths returns capped paths for high-volume dork generation.
+func (f *Fingerprint) TopPaths() []string {
+	if len(f.Paths) <= maxPathDorks {
+		return f.Paths
+	}
+	return f.Paths[:maxPathDorks]
 }
 
 func (f *Fingerprint) Viable() bool {

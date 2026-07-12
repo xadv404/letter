@@ -38,9 +38,9 @@ func SiteScope(raw string) (host, tld string) {
 	return host, tld
 }
 
-const maxPrecisionKeywords = 30
+const maxPrecisionKeywords = 5
 
-// GenerateFingerprint builds injectable-focused dorks: volume first, precision second.
+// GenerateFingerprint builds injectable-focused dorks optimized for max Google volume.
 func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 	if !fp.Viable() {
 		return nil
@@ -58,9 +58,33 @@ func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 		out = append(out, dork)
 	}
 
-	// Layer 1 — volume: param-only injectable surface (most Google results).
-	for _, pm := range fp.Parameters {
-		for _, d := range applyVolumeParam(pm) {
+	primary, allParams := splitParamTiers(fp.Parameters)
+
+	// Layer 0 — global blast: fixed literal patterns (highest Google yield).
+	for _, d := range globalLiteralBlast() {
+		add(d)
+	}
+
+	// Layer 1 — ultra-simple: every param, single-operator dorks.
+	for _, pm := range allParams {
+		for _, d := range applyUltraSimple(pm) {
+			add(d)
+		}
+	}
+
+	// Layer 2 — literal endpoints: script.php?param= (single inurl, injectable).
+	for _, pm := range allParams {
+		for _, d := range applyLiteralEndpoints(pm) {
+			add(d)
+		}
+	}
+
+	// Layer 3 — injectable errors + stack filetype (primary params).
+	for _, pm := range primary {
+		for _, d := range applyInjectableErrors(pm) {
+			add(d)
+		}
+		for _, d := range applyStackFiletype(pm) {
 			add(d)
 		}
 		for _, d := range applyParamSurface(pm) {
@@ -68,48 +92,41 @@ func (g *Generator) GenerateFingerprint(fp Fingerprint) []string {
 		}
 	}
 
-	// Layer 2 — volume: crawled paths × injectable params.
-	for _, path := range fp.Paths {
-		for _, pm := range fp.Parameters {
-			for _, d := range applyVolumePath(path, pm) {
-				add(d)
-			}
-			for _, d := range applyPathLayout(path, pm) {
+	// Layer 4 — multi-param combos (classic SQLi entry points).
+	for _, d := range applyMultiParam(primary) {
+		add(d)
+	}
+
+	// Layer 5 — crawled paths × primary params (capped).
+	for _, path := range fp.TopPaths() {
+		for _, pm := range primary {
+			for _, d := range applySimplePath(path, pm) {
 				add(d)
 			}
 		}
 	}
 
-	// Layer 3 — multi-param URLs (classic SQLi entry points).
-	for _, d := range applyMultiParam(fp.Parameters) {
-		add(d)
-	}
-
-	// Layer 4 — precision: theme keywords × params (clone hunting).
+	// Layer 6 — precision clone hunting (minimal — low Google volume per dork).
 	kwLimit := len(fp.Keywords)
 	if kwLimit > maxPrecisionKeywords {
 		kwLimit = maxPrecisionKeywords
 	}
 	for i := 0; i < kwLimit; i++ {
 		kw := fp.Keywords[i]
-		for _, pm := range fp.Parameters {
-			for _, d := range applyKeywordMatch(kw, pm) {
-				add(d)
-			}
-			for _, d := range applySQLiDynamic(kw, pm) {
+		for _, pm := range primary {
+			for _, d := range applyKeywordMatchLite(kw, pm) {
 				add(d)
 			}
 		}
 	}
 
 	phLimit := len(fp.Phrases)
-	if phLimit > 15 {
-		phLimit = 15
+	if phLimit > 5 {
+		phLimit = 5
 	}
 	for i := 0; i < phLimit; i++ {
-		phrase := fp.Phrases[i]
-		for _, pm := range fp.Parameters {
-			for _, d := range applyPhraseClone(phrase, pm) {
+		for _, pm := range primary {
+			for _, d := range applyPhraseClone(fp.Phrases[i], pm) {
 				add(d)
 			}
 		}

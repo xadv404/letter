@@ -117,7 +117,7 @@ func TestPreviewFormat(t *testing.T) {
 		Host: "shop.com", TLD: ".com",
 		Keywords: []string{"admin"}, Parameters: []string{"id"},
 	}, 3)
-	if !strings.Contains(out, "inurl:id=") {
+	if !strings.Contains(out, "id=") {
 		t.Fatalf("unexpected preview: %s", out)
 	}
 }

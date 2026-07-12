@@ -26,7 +26,8 @@ func TemplateCount() int {
 		len(sqliErrorTemplates()) +
 		len(sqliEndpointTemplates()) +
 		len(sqliDynamicTemplates()) +
-		len(volumeParamTemplates())
+		len(ultraSimpleTemplates()) +
+		len(globalLiteralBlast())
 }
 
 func phraseCloneTemplates() []func(phrase, param string) string {
@@ -146,6 +147,10 @@ func sqliDynamicTemplates() []func(keyword, param string) string {
 
 func applyPhraseClone(phrase, param string) []string {
 	return applyPair(phraseCloneTemplates(), phrase, param)
+}
+
+func applyKeywordMatchLite(keyword, param string) []string {
+	return applyPair(keywordMatchTemplates(), keyword, param)
 }
 
 func applyKeywordMatch(keyword, param string) []string {

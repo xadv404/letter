@@ -71,7 +71,7 @@ func (e *Engine) generateDorks(domains []string) string {
 		_ = e.exporter.WriteDork(dork)
 	}
 
-	e.log(fmt.Sprintf("[Phase 4] %d dorks injectables (volume + précision)", len(generated)))
+	e.log(fmt.Sprintf("[Phase 4] %d dorks blast injectables (volume max)", len(generated)))
 	preview := dorks.PreviewList(generated, 12)
 	e.log(preview)
 	return strings.Join([]string{
