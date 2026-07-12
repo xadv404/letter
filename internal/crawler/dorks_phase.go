@@ -1,52 +1,60 @@
 package crawler
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/xadv404/letter/internal/dorks"
 )
 
 func (e *Engine) generateDorks(domains []string) string {
-	var previews []string
+	fp := dorks.NewFingerprint()
+
 	for _, domain := range domains {
-		host, tld := dorks.SiteScope(domain)
+		host, _ := dorks.SiteScope(domain)
 
-		topKW := e.kw.TopForDomain(host, 30)
-		keywords := make([]string, 0, len(topKW))
-		for _, r := range topKW {
-			keywords = append(keywords, r.Keyword)
+		for _, r := range e.kw.TopForDomain(host, 50) {
+			fp.AddTerm(r.Keyword)
 		}
-
-		topParams := e.scorer.TopForDorks(host, 20)
-		parameters := make([]string, 0, len(topParams))
-		for _, pr := range topParams {
-			parameters = append(parameters, pr.Name)
+		for _, path := range e.kw.TopPathsForDomain(host, 30) {
+			fp.AddPath(path)
 		}
-
-		if len(keywords) == 0 {
-			e.log("[Phase 4] Aucun keyword depuis le crawl pour " + host + " — ignoré")
-			continue
+		for _, r := range e.scorer.TopForDorks(host, 45) {
+			fp.AddParameter(r.Name)
 		}
-		if len(parameters) == 0 {
-			parameters = []string{"id", "search_term", "filter_by"}
-		}
-
-		opts := dorks.Options{
-			Host:       host,
-			TLD:        tld,
-			Keywords:   keywords,
-			Parameters: parameters,
-		}
-
-		msg := "[Phase 4] Dorks (sites similaires) depuis " + host
-		e.log(msg)
-		preview := dorks.Preview(opts, 8)
-		previews = append(previews, preview)
-		e.log(preview)
-
-		for _, dork := range e.dorks.Generate(opts) {
-			_ = e.exporter.WriteDork(dork)
+		for _, flagged := range e.scorer.FlaggedURLs(host) {
+			fp.AddURLPaths(flagged.URL)
+			for _, p := range flagged.HighParams {
+				fp.AddParameter(p)
+			}
 		}
 	}
-	return strings.Join(previews, "\n")
+
+	fp.Finalize()
+
+	if !fp.Viable() {
+		msg := "[Phase 4] Données insuffisantes — crawl plus de pages sur les seeds"
+		e.log(msg)
+		return "No dorks generated."
+	}
+
+	e.log(fmt.Sprintf(
+		"[Phase 4] Empreinte thème (%d seeds): %d keywords, %d phrases, %d params, %d paths",
+		len(domains), len(fp.Keywords), len(fp.Phrases), len(fp.Parameters), len(fp.Paths),
+	))
+
+	generated := e.dorks.GenerateFingerprint(*fp)
+	for _, dork := range generated {
+		_ = e.exporter.WriteDork(dork)
+	}
+
+	e.log(fmt.Sprintf("[Phase 4] %d dorks pour trouver des clones similaires vulnérables SQLi", len(generated)))
+	preview := dorks.PreviewList(generated, 12)
+	e.log(preview)
+	return strings.Join([]string{
+		fmt.Sprintf("Theme fingerprint: %d kw / %d phrases / %d params / %d paths",
+			len(fp.Keywords), len(fp.Phrases), len(fp.Parameters), len(fp.Paths)),
+		fmt.Sprintf("Generated %d dorks", len(generated)),
+		preview,
+	}, "\n")
 }

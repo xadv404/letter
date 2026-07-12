@@ -42,8 +42,9 @@ type Extractor struct {
 	maxSession int
 
 	scores         map[string]int
-	domainScores   map[string]map[string]int
-	domainPageHits map[string]map[string]int
+	domainScores    map[string]map[string]int
+	domainPathScores map[string]map[string]int
+	domainPageHits  map[string]map[string]int
 	domainPageSeen map[string]map[string]map[string]struct{}
 	emitted        map[string]int
 	sessionLen     int
@@ -54,8 +55,9 @@ func New(maxCount int) *Extractor {
 		filter:         NewFilter(),
 		maxSession:     maxCount,
 		scores:         map[string]int{},
-		domainScores:   map[string]map[string]int{},
-		domainPageHits: map[string]map[string]int{},
+		domainScores:     map[string]map[string]int{},
+		domainPathScores: map[string]map[string]int{},
+		domainPageHits:   map[string]map[string]int{},
 		domainPageSeen: map[string]map[string]map[string]struct{}{},
 		emitted:        map[string]int{},
 	}
@@ -130,6 +132,9 @@ func (e *Extractor) commitCandidates(domain, pageURL string, candidates map[stri
 		e.scores[phrase] += weight
 		newScore := e.scores[phrase]
 		e.addDomainScore(domain, phrase, weight)
+		if cand.source == "url-path" {
+			e.addPathScore(domain, phrase, weight)
+		}
 		if pageURL != "" {
 			e.recordPageHit(domain, pageURL, phrase)
 		}
@@ -380,6 +385,43 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (e *Extractor) addPathScore(domain, phrase string, weight int) {
+	if e.domainPathScores[domain] == nil {
+		e.domainPathScores[domain] = map[string]int{}
+	}
+	e.domainPathScores[domain][phrase] += weight
+}
+
+// TopPathsForDomain returns frequent URL path tokens from crawled pages.
+func (e *Extractor) TopPathsForDomain(domain string, limit int) []string {
+	scores := e.domainPathScores[domain]
+	if len(scores) == 0 {
+		return nil
+	}
+	type kv struct {
+		k string
+		v int
+	}
+	arr := make([]kv, 0, len(scores))
+	for k, v := range scores {
+		arr = append(arr, kv{k, v})
+	}
+	sort.Slice(arr, func(i, j int) bool {
+		if arr[i].v == arr[j].v {
+			return arr[i].k < arr[j].k
+		}
+		return arr[i].v > arr[j].v
+	})
+	if limit > 0 && len(arr) > limit {
+		arr = arr[:limit]
+	}
+	out := make([]string, len(arr))
+	for i, item := range arr {
+		out[i] = item.k
+	}
+	return out
 }
 
 func (e *Extractor) addDomainScore(domain, phrase string, weight int) {
