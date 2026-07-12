@@ -139,6 +139,10 @@
   flex-direction: column;
 }
 
+.app--full .main {
+  margin-left: 0;
+}
+
 .topbar {
   position: sticky;
   top: 0;
@@ -206,6 +210,49 @@
   animation: pulse 2s infinite;
 }
 
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover {
+  color: var(--text);
+  border-color: var(--border-bright);
+  background: rgba(255, 255, 255, 0.08);
+  text-decoration: none;
+}
+
+.btn-icon .ico {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.topbar-left .brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--blue), var(--cyan));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
+  flex-shrink: 0;
+}
+
+.page-subtitle.status-running { color: #6ee7b7; }
+.page-subtitle.status-done { color: #93c5fd; }
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
@@ -217,6 +264,29 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.content--dashboard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.85rem 1.15rem 1rem;
+  overflow: hidden;
+}
+
+.dashboard-panels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0.75rem;
+}
+
+.panel-grow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .content-header {

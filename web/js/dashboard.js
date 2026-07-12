@@ -17,7 +17,6 @@
     btnPause.disabled = !on;
     btnResume.disabled = !on;
     btnStop.disabled = !on;
-    document.getElementById("status-text").textContent = on ? "Running" : "Idle";
   }
 
   function appendLog(line) {
@@ -28,7 +27,17 @@
   function applySnapshot(s) {
     if (!s) return;
     setRunning(!!s.running);
-    document.getElementById("status-detail").textContent = s.running ? "En cours…" : (s.elapsed && s.elapsed !== "0s" ? "Terminé" : "En attente");
+    var statusEl = document.getElementById("status-detail");
+    if (s.running) {
+      statusEl.textContent = "En cours…";
+      statusEl.className = "page-subtitle status-running";
+    } else if (s.elapsed && s.elapsed !== "0s") {
+      statusEl.textContent = "Terminé";
+      statusEl.className = "page-subtitle status-done";
+    } else {
+      statusEl.textContent = "En attente";
+      statusEl.className = "page-subtitle";
+    }
     document.getElementById("stat-elapsed").textContent = s.elapsed || "0s";
     document.getElementById("stat-kw").textContent = s.keywords || 0;
     document.getElementById("stat-params").textContent = s.params || 0;

@@ -4,6 +4,7 @@
   grid-template-columns: repeat(4, 1fr);
   gap: 0.6rem;
   margin-bottom: 0.85rem;
+  flex-shrink: 0;
 }
 
 .stat-card {
@@ -389,14 +390,35 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
-  margin-bottom: 0.85rem;
+  margin-bottom: 0;
+  flex: 1.2;
+  min-height: 0;
+}
+
+.split .activity,
+.split .card.panel-grow {
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+.split .card.panel-grow .card-header {
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
 }
 
 .btn-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.45rem;
   margin-bottom: 0.75rem;
+  flex-shrink: 0;
+}
+
+.domain-file-label {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--dim);
 }
 
 .btn-ctrl {
@@ -449,10 +471,11 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
 
 .log-box {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   line-height: 1.5;
   color: var(--muted);
-  max-height: 120px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem 1.15rem;
   white-space: pre-wrap;
@@ -463,12 +486,20 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
 
 .dork-box {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   color: #a5f3fc;
-  max-height: 120px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   white-space: pre-wrap;
-  padding: 1rem;
+  padding: 0 1rem 1rem;
+}
+
+.table-wrap.panel-grow {
+  margin-bottom: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 @media (max-width: 768px) {

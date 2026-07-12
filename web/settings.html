@@ -15,34 +15,20 @@
 </head>
 <body>
   <div class="ambient"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="grid-bg"></div></div>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="sidebar-brand"><a href="index.html"><div class="brand-icon">L</div>Letter Recon</a></div>
-      <nav class="sidebar-nav">
-        <div class="nav-category">
-          <div class="nav-category-label">Général</div>
-          <a href="index.html" class="nav-link"><span class="icon"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-dashboard"/></svg></span> Dashboard</a>
-        </div>
-        <div class="nav-category">
-          <div class="nav-category-label">Settings</div>
-          <a href="settings.html" class="nav-link"><span class="icon"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-settings"/></svg></span> Configuration</a>
-        </div>
-      </nav>
-    </aside>
+  <div class="app app--full">
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="menu-toggle" type="button" aria-label="Menu"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-menu"/></svg></button>
-          <div><div class="page-title">Configuration</div><div class="page-subtitle">Settings</div></div>
+          <a href="index.html" class="btn-icon" title="Retour" aria-label="Retour au dashboard">
+            <svg class="ico" aria-hidden="true"><use href="icons.svg#ico-back"/></svg>
+          </a>
+          <div>
+            <div class="page-title">Paramètres</div>
+            <div class="page-subtitle">Crawl</div>
+          </div>
         </div>
-        <div class="topbar-badge"><span class="dot"></span> GUI native</div>
       </header>
       <div class="content">
-        <div class="content-header">
-          <h1>Paramètres</h1>
-          <p>Réglages sauvegardés localement dans l'application.</p>
-        </div>
-
         <form id="settings-form">
           <div class="settings-section">
             <div class="settings-section-header"><h2>Crawl</h2><p>Découverte des URLs</p></div>

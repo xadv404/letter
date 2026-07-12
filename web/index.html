@@ -17,37 +17,21 @@
 </head>
 <body>
   <div class="ambient"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="grid-bg"></div></div>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="sidebar-brand"><a href="index.html"><div class="brand-icon">L</div>Letter Recon</a></div>
-      <nav class="sidebar-nav">
-        <div class="nav-category">
-          <div class="nav-category-label">Général</div>
-          <a href="index.html" class="nav-link"><span class="icon"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-dashboard"/></svg></span> Dashboard</a>
-        </div>
-        <div class="nav-category">
-          <div class="nav-category-label">Settings</div>
-          <a href="settings.html" class="nav-link"><span class="icon"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-settings"/></svg></span> Configuration</a>
-        </div>
-      </nav>
-    </aside>
+  <div class="app app--full">
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
-          <button class="menu-toggle" type="button" aria-label="Menu"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-menu"/></svg></button>
+          <div class="brand-icon">L</div>
           <div>
-            <div class="page-title">Dashboard</div>
+            <div class="page-title">Letter Recon</div>
             <div class="page-subtitle" id="status-detail">En attente</div>
           </div>
         </div>
-        <div class="topbar-badge"><span class="dot" id="status-dot"></span> <span id="status-text">Idle</span></div>
+        <a href="settings.html" class="btn-icon" title="Paramètres" aria-label="Paramètres">
+          <svg class="ico" aria-hidden="true"><use href="icons.svg#ico-settings"/></svg>
+        </a>
       </header>
-      <div class="content">
-        <div class="content-header">
-          <h1>Letter Recon</h1>
-          <p>Upload domains, start — export dorks only.</p>
-        </div>
-
+      <div class="content content--dashboard">
         <div class="btn-row">
           <label class="btn-ctrl file-input-wrap">
             <svg class="ico" aria-hidden="true"><use href="icons.svg#ico-upload"/></svg>
@@ -58,8 +42,8 @@
           <button class="btn-ctrl" id="btn-pause" type="button" disabled><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-pause"/></svg> Pause</button>
           <button class="btn-ctrl" id="btn-resume" type="button" disabled><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-resume"/></svg> Resume</button>
           <button class="btn-ctrl danger" id="btn-stop" type="button" disabled><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-stop"/></svg> Stop</button>
+          <span class="domain-file-label" id="domain-file-label">No domains file</span>
         </div>
-        <p class="section-desc" id="domain-file-label" style="margin-top:-0.5rem;margin-bottom:0.75rem;font-size:0.72rem;color:var(--dim)">No domains file</p>
 
         <div class="stats-grid">
           <div class="stat-card blue"><div class="label">Durée</div><div class="value" id="stat-elapsed">0s</div><div class="hint">temps écoulé</div></div>
@@ -68,25 +52,27 @@
           <div class="stat-card emerald"><div class="label">Système</div><div class="value" id="stat-cpu">—</div><div class="hint" id="stat-ram">CPU / RAM</div></div>
         </div>
 
-        <div class="split">
-          <div class="activity">
-            <div class="activity-header">Journal</div>
-            <div class="log-box" id="log-box"></div>
-          </div>
-          <div class="card">
-            <div class="card-header">
-              <div class="card-icon violet"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-search"/></svg></div>
-              <h3>Preview dorks</h3>
+        <div class="dashboard-panels">
+          <div class="split">
+            <div class="activity panel-grow">
+              <div class="activity-header">Journal</div>
+              <div class="log-box" id="log-box"></div>
             </div>
-            <div class="dork-box" id="dork-preview">En attente…</div>
+            <div class="card panel-grow">
+              <div class="card-header">
+                <div class="card-icon violet"><svg class="ico" aria-hidden="true"><use href="icons.svg#ico-search"/></svg></div>
+                <h3>Preview dorks</h3>
+              </div>
+              <div class="dork-box" id="dork-preview">En attente…</div>
+            </div>
           </div>
-        </div>
 
-        <div class="table-wrap">
-          <table class="domain-table">
-            <thead><tr><th>Domaine</th><th>Pages</th><th>Erreurs</th><th>Statut</th></tr></thead>
-            <tbody id="domains-body"></tbody>
-          </table>
+          <div class="table-wrap panel-grow">
+            <table class="domain-table">
+              <thead><tr><th>Domaine</th><th>Pages</th><th>Erreurs</th><th>Statut</th></tr></thead>
+              <tbody id="domains-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
