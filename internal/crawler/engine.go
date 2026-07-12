@@ -26,6 +26,13 @@ import (
 	"github.com/xadv404/letter/internal/throttle"
 )
 
+type pageRecord struct {
+	host  string
+	url   string
+	body  string
+	links []string
+}
+
 type Engine struct {
 	cfg       config.CrawlConfig
 	throttle  *throttle.Controller
@@ -41,6 +48,9 @@ type Engine struct {
 	active   atomic.Int32
 	stopCh   chan struct{}
 	stopOnce sync.Once
+
+	pageBuf   []pageRecord
+	pageBufMu sync.Mutex
 
 	events Events
 	phase  atomic.Int32
@@ -181,6 +191,9 @@ func (e *Engine) Stop() {
 
 func (e *Engine) Run(ctx context.Context, domains []string) error {
 	e.dashboard.Reset()
+	e.pageBufMu.Lock()
+	e.pageBuf = nil
+	e.pageBufMu.Unlock()
 
 	var todo []string
 	for _, d := range domains {
@@ -195,6 +208,8 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 	}
 	if len(todo) == 0 {
 		e.log("[Memory] Tous les domaines déjà traités — génération dorks uniquement")
+		e.finalize(domains, false)
+		return nil
 	}
 
 	e.setPhase(1, "Phase 1/4 — Crawling")
@@ -241,6 +256,7 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 			close(domainCh)
 			e.waitWorkers(&wg)
 			close(monitorDone)
+			e.runPostCrawlPhases()
 			e.finalize(domains, false)
 			return ctx.Err()
 		case <-e.stopCh:
@@ -248,6 +264,7 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 			e.waitWorkers(&wg)
 			close(monitorDone)
 			stopped.Store(true)
+			e.runPostCrawlPhases()
 			e.finalize(domains, true)
 			return nil
 		default:
@@ -258,7 +275,8 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 	e.waitWorkers(&wg)
 	close(monitorDone)
 
-	e.finalize(domains, false)
+	e.runPostCrawlPhases()
+	e.finalize(domains, stopped.Load())
 	return nil
 }
 
@@ -312,6 +330,66 @@ func (e *Engine) waitWorkers(wg *sync.WaitGroup) {
 		e.log("[Stop] Timeout gracieux 30s — arrêt forcé")
 	}
 	_ = e.exporter.ForceFlush()
+}
+
+func (e *Engine) bufferPage(host, rawURL, body string, links []string) {
+	e.pageBufMu.Lock()
+	defer e.pageBufMu.Unlock()
+	e.pageBuf = append(e.pageBuf, pageRecord{
+		host:  host,
+		url:   rawURL,
+		body:  body,
+		links: append([]string(nil), links...),
+	})
+}
+
+func (e *Engine) bufferedPageCount() int {
+	e.pageBufMu.Lock()
+	defer e.pageBufMu.Unlock()
+	return len(e.pageBuf)
+}
+
+func (e *Engine) runPostCrawlPhases() {
+	if e.bufferedPageCount() == 0 {
+		return
+	}
+	e.setPhase(2, "Phase 2/4 — Keyword extraction")
+	e.runKeywordPhase()
+	e.setPhase(3, "Phase 3/4 — SQLi parameter scoring")
+	e.runParamPhase()
+}
+
+func (e *Engine) runKeywordPhase() {
+	e.pageBufMu.Lock()
+	pages := append([]pageRecord(nil), e.pageBuf...)
+	e.pageBufMu.Unlock()
+
+	for _, rec := range pages {
+		var doc *html.Node
+		if rec.body != "" {
+			doc, _ = html.Parse(strings.NewReader(rec.body))
+		}
+		kwResults := e.kw.ExtractPage(rec.host, rec.url, doc)
+		if len(kwResults) > 0 {
+			e.dashboard.AddKeywords(len(kwResults))
+		}
+	}
+	e.emitSnapshot(phaseLabel(2), true, "")
+}
+
+func (e *Engine) runParamPhase() {
+	e.pageBufMu.Lock()
+	pages := append([]pageRecord(nil), e.pageBuf...)
+	e.pageBufMu.Unlock()
+
+	for _, rec := range pages {
+		for _, link := range rec.links {
+			link = canonicalURL(link)
+			e.exportScoredParams(rec.host, e.scorer.ScoreURL(rec.host, link, e.cfg.MinParamScore))
+		}
+		e.exportScoredParams(rec.host, e.scorer.ScoreURL(rec.host, rec.url, e.cfg.MinParamScore))
+	}
+	e.emitSnapshot(phaseLabel(3), true, "")
 }
 
 func (e *Engine) finalize(domains []string, wasStopped bool) {
@@ -438,28 +516,14 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		}
 		pages++
 
-		e.setPhase(2, "Phase 2/4 — Keyword extraction")
-
-		var doc *html.Node
-		if body != "" {
-			doc, _ = html.Parse(strings.NewReader(body))
-		}
-		kwResults := e.kw.ExtractPage(hostKey, rawURL, doc)
-		if len(kwResults) > 0 {
-			e.dashboard.AddKeywords(len(kwResults))
-		}
-		e.emitSnapshot(phaseLabel(int(e.phase.Load())), true, "")
-
-		e.setPhase(3, "Phase 3/4 — SQLi parameter scoring")
+		e.bufferPage(hostKey, rawURL, body, links)
 		for _, link := range links {
 			link = canonicalURL(link)
 			if sameHost(u, link) && !visited[link] && !queued[link] {
 				queued[link] = true
 				queue = append(queue, link)
 			}
-			e.exportScoredParams(hostKey, e.scorer.ScoreURL(hostKey, link, e.cfg.MinParamScore))
 		}
-		e.exportScoredParams(hostKey, e.scorer.ScoreURL(hostKey, rawURL, e.cfg.MinParamScore))
 
 		e.dashboard.UpdateDomain(hostKey, pages, errors, false)
 		e.persist(hostKey, pages, errors, false, visited, queue)
