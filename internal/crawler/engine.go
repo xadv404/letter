@@ -134,6 +134,9 @@ func (e *Engine) emitSnapshot(phaseLabel string, running bool, dorkPreview strin
 	if e.events.OnSnapshot == nil {
 		return
 	}
+	if int(e.phase.Load()) < 4 {
+		dorkPreview = ""
+	}
 	snap := e.throttle.Refresh(countGoroutines())
 	acc, rej := e.scorer.Stats()
 	kw := len(e.kw.Top(config.MaxExportKeywords))
@@ -207,7 +210,9 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 		todo = append(todo, d)
 	}
 	if len(todo) == 0 {
-		e.log("[Memory] Tous les domaines déjà traités — génération dorks uniquement")
+		e.log("[Memory] Tous les domaines déjà traités — regénération dorks (phases 2→3→4)")
+		e.ensureBufferFromState(ctx, domains)
+		e.runPostCrawlPhases(ctx, domains)
 		e.finalize(domains, false)
 		return nil
 	}
@@ -256,7 +261,7 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 			close(domainCh)
 			e.waitWorkers(&wg)
 			close(monitorDone)
-			e.runPostCrawlPhases()
+			e.runPostCrawlPhases(ctx, domains)
 			e.finalize(domains, false)
 			return ctx.Err()
 		case <-e.stopCh:
@@ -264,7 +269,7 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 			e.waitWorkers(&wg)
 			close(monitorDone)
 			stopped.Store(true)
-			e.runPostCrawlPhases()
+			e.runPostCrawlPhases(ctx, domains)
 			e.finalize(domains, true)
 			return nil
 		default:
@@ -275,7 +280,7 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 	e.waitWorkers(&wg)
 	close(monitorDone)
 
-	e.runPostCrawlPhases()
+	e.runPostCrawlPhases(ctx, domains)
 	e.finalize(domains, stopped.Load())
 	return nil
 }
@@ -349,7 +354,65 @@ func (e *Engine) bufferedPageCount() int {
 	return len(e.pageBuf)
 }
 
-func (e *Engine) runPostCrawlPhases() {
+func (e *Engine) bufferedURLSet() map[string]struct{} {
+	e.pageBufMu.Lock()
+	defer e.pageBufMu.Unlock()
+	out := make(map[string]struct{}, len(e.pageBuf))
+	for _, rec := range e.pageBuf {
+		out[rec.url] = struct{}{}
+	}
+	return out
+}
+
+// ensureBufferFromState re-fetches visited URLs missing from the in-memory buffer
+// (resume, stop/restart, or dorks-only rerun after a previous crawl).
+func (e *Engine) ensureBufferFromState(ctx context.Context, domains []string) {
+	inBuf := e.bufferedURLSet()
+	for _, d := range domains {
+		u, err := url.Parse(d)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		host := NormalizeHost(u.Host)
+		progress := e.state.Get(host)
+		if len(progress.Visited) == 0 {
+			continue
+		}
+		added := 0
+		for _, rawURL := range progress.Visited {
+			c := canonicalURL(rawURL)
+			if _, ok := inBuf[c]; ok {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-e.stopCh:
+				return
+			default:
+			}
+			if !e.waitBrief(ctx) {
+				return
+			}
+			snap := e.throttle.Current()
+			time.Sleep(time.Duration(snap.DelayMS) * time.Millisecond)
+
+			body, links, err := e.fetch(ctx, c)
+			if err != nil {
+				continue
+			}
+			e.bufferPage(host, c, body, links)
+			inBuf[c] = struct{}{}
+			added++
+		}
+		if added > 0 {
+			e.log(fmt.Sprintf("[Pipeline] +%d pages rechargées depuis état (%s)", added, host))
+		}
+	}
+}
+
+func (e *Engine) runPostCrawlPhases(ctx context.Context, domains []string) {
+	e.ensureBufferFromState(ctx, domains)
 	if e.bufferedPageCount() == 0 {
 		return
 	}

@@ -128,7 +128,13 @@
       goroutinesHint.textContent = s.goroutines ? "(goroutines: " + s.goroutines + ")" : "";
     }
 
-    if (s.dork_preview) dorkPreview.textContent = s.dork_preview;
+    if (s.phase >= 4 && s.dork_preview) {
+      dorkPreview.textContent = s.dork_preview;
+    } else if (s.running) {
+      dorkPreview.textContent = "Phase " + (s.phase || 1) + "/4 — dorks en phase 4 uniquement…";
+    } else if (!s.dork_preview) {
+      dorkPreview.textContent = "En attente…";
+    }
     if (s.domain_file) domainLabel.textContent = "Fichier : " + s.domain_file;
 
     drawChart(s.timeseries || []);
