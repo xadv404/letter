@@ -22,25 +22,50 @@
   --font: "Inter", system-ui, sans-serif;
   --mono: "JetBrains Mono", Consolas, monospace;
   --shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
-  --sidebar-w: 200px;
+  --sidebar-w: 248px;
 }
 
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-html { scroll-behavior: smooth; }
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  overflow: hidden;
+  height: 100%;
+}
 
 body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
+}
+
+/* Masquer les barres de défilement */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 a {
