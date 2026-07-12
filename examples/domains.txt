@@ -1,0 +1,3 @@
+# Example domains file — one per line, # for comments
+example.com
+https://httpbin.org
