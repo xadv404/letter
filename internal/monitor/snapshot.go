@@ -28,6 +28,7 @@ type UISnapshot struct {
 	Decisions  []params.FilterDecision
 	DorkPreview string
 	Running    bool
+	Series     []TimePoint
 }
 
 func (d *Dashboard) Snapshot(
@@ -50,6 +51,9 @@ func (d *Dashboard) Snapshot(
 	decs := make([]params.FilterDecision, len(decisions))
 	copy(decs, decisions)
 
+	series := make([]TimePoint, len(d.series))
+	copy(series, d.series)
+
 	return UISnapshot{
 		Elapsed:     time.Since(d.started).Round(time.Second),
 		Phase:       phase,
@@ -70,6 +74,7 @@ func (d *Dashboard) Snapshot(
 		Decisions:   decs,
 		DorkPreview: dorkPreview,
 		Running:     running,
+		Series:      series,
 	}
 }
 
@@ -80,4 +85,5 @@ func (d *Dashboard) Reset() {
 	d.domains = map[string]*DomainStatus{}
 	d.keywordsFound = 0
 	d.paramsFound = 0
+	d.series = nil
 }

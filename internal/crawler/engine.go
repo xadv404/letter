@@ -37,8 +37,8 @@ type Engine struct {
 	dorks     *dorks.Generator
 	client    *http.Client
 
-	pauseCh  chan struct{}
-	resumeCh chan struct{}
+	paused   atomic.Bool
+	active   atomic.Int32
 	stopCh   chan struct{}
 	stopOnce sync.Once
 
@@ -58,11 +58,12 @@ func NewWithEvents(cfg config.CrawlConfig, events Events) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	exp, err := export.New(cfg.OutputDir)
+	resume := shouldResumeExport(st, cfg.DomainFile)
+	exp, err := export.New(cfg.OutputDir, resume)
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{
+	e := &Engine{
 		cfg:            cfg,
 		throttle:       throttle.New(cfg.DelayMS, cfg.Depth, cfg.PageLimit, cfg.Workers),
 		exporter:       exp,
@@ -72,11 +73,38 @@ func NewWithEvents(cfg config.CrawlConfig, events Events) (*Engine, error) {
 		scorer:         params.New(config.MaxParams, cfg.OutputDir),
 		dorks:          dorks.New(),
 		client:         &http.Client{Timeout: 15 * time.Second},
-		pauseCh:        make(chan struct{}, 1),
-		resumeCh:       make(chan struct{}, 1),
 		stopCh:         make(chan struct{}),
 		events:         events,
-	}, nil
+	}
+	if st.IsPaused() {
+		e.paused.Store(true)
+	}
+	return e, nil
+}
+
+func shouldResumeExport(st *state.Store, domainFile string) bool {
+	if st.IsPaused() {
+		return true
+	}
+	if domainFile == "" {
+		return false
+	}
+	domains, err := LoadDomains(domainFile)
+	if err != nil {
+		return false
+	}
+	for _, d := range domains {
+		u, err := url.Parse(d)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		host := NormalizeHost(u.Host)
+		p := st.Get(host)
+		if !p.Finished && (p.Pages > 0 || len(p.Queue) > 0 || len(p.Visited) > 0) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) log(msg string) {
@@ -98,6 +126,9 @@ func (e *Engine) emitSnapshot(phaseLabel string, running bool, dorkPreview strin
 	}
 	snap := e.throttle.Refresh(countGoroutines())
 	acc, rej := e.scorer.Stats()
+	kw := e.kw.Unique()
+	pm := e.scorer.Count()
+	e.dashboard.RecordSeries(kw, pm)
 	ui := e.dashboard.Snapshot(
 		int(e.phase.Load()),
 		phaseLabel,
@@ -107,8 +138,8 @@ func (e *Engine) emitSnapshot(phaseLabel string, running bool, dorkPreview strin
 		dorkPreview,
 		running,
 	)
-	ui.Keywords = e.kw.Unique()
-	ui.Params = e.scorer.Count()
+	ui.Keywords = kw
+	ui.Params = pm
 	e.events.OnSnapshot(ui)
 }
 
@@ -133,8 +164,17 @@ func LoadDomains(path string) ([]string, error) {
 	return domains, sc.Err()
 }
 
-func (e *Engine) Pause()  { e.state.Pause(); e.pauseCh <- struct{}{} }
-func (e *Engine) Resume() { e.state.Resume(); e.resumeCh <- struct{}{} }
+func (e *Engine) Pause() {
+	e.paused.Store(true)
+	e.state.Pause()
+	_ = e.exporter.ForceFlush()
+}
+
+func (e *Engine) Resume() {
+	e.state.Resume()
+	e.paused.Store(false)
+}
+
 func (e *Engine) Stop() {
 	e.stopOnce.Do(func() { close(e.stopCh) })
 }
@@ -162,6 +202,8 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 	monitorDone := make(chan struct{})
 	go e.monitorLoop(monitorDone)
 
+	stopped := atomic.Bool{}
+
 	domainCh := make(chan string)
 	var wg sync.WaitGroup
 	workers := e.cfg.Workers
@@ -173,13 +215,20 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 		go func() {
 			defer wg.Done()
 			for d := range domainCh {
+				if !e.acquireWorkerSlot(ctx) {
+					return
+				}
 				select {
 				case <-ctx.Done():
+					e.active.Add(-1)
 					return
 				case <-e.stopCh:
+					e.active.Add(-1)
+					stopped.Store(true)
 					return
 				default:
 					e.crawlDomain(ctx, d)
+					e.active.Add(-1)
 				}
 			}
 		}()
@@ -190,34 +239,96 @@ func (e *Engine) Run(ctx context.Context, domains []string) error {
 		select {
 		case <-ctx.Done():
 			close(domainCh)
-			wg.Wait()
+			e.waitWorkers(&wg)
 			close(monitorDone)
+			e.finalize(domains, false)
 			return ctx.Err()
 		case <-e.stopCh:
 			close(domainCh)
-			wg.Wait()
+			e.waitWorkers(&wg)
 			close(monitorDone)
+			stopped.Store(true)
+			e.finalize(domains, true)
 			return nil
 		default:
 			domainCh <- d
 		}
 	}
 	close(domainCh)
-	wg.Wait()
-
+	e.waitWorkers(&wg)
 	close(monitorDone)
 
+	e.finalize(domains, false)
+	return nil
+}
+
+func (e *Engine) acquireWorkerSlot(ctx context.Context) bool {
+	for {
+		snap := e.throttle.Current()
+		if e.active.Load() < int32(snap.Workers) {
+			e.active.Add(1)
+			return true
+		}
+		if !e.waitBrief(ctx) {
+			return false
+		}
+	}
+}
+
+func (e *Engine) waitBrief(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-e.stopCh:
+		return false
+	default:
+		if e.paused.Load() {
+			_ = e.exporter.ForceFlush()
+		}
+		for e.paused.Load() {
+			select {
+			case <-ctx.Done():
+				return false
+			case <-e.stopCh:
+				return false
+			default:
+				time.Sleep(200 * time.Millisecond)
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+		return true
+	}
+}
+
+func (e *Engine) waitWorkers(wg *sync.WaitGroup) {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(throttle.GracefulShutdown):
+		e.log("[Stop] Timeout gracieux 30s — arrêt forcé")
+	}
+	_ = e.exporter.ForceFlush()
+}
+
+func (e *Engine) finalize(domains []string, wasStopped bool) {
 	e.setPhase(4, "Phase 4/4 — Auto-assemble dorks")
 	preview := e.generateDorks(domains)
+	if wasStopped {
+		e.log("[Phase 4] Export partiel après arrêt")
+	}
 	e.emitSnapshot("Complete", false, preview)
 	dorksPath := e.exporter.DorksPath()
 	if err := e.exporter.Close(); err != nil {
-		return err
+		e.log("[Export] Erreur fermeture: " + err.Error())
+		return
 	}
 	if e.events.OnDorksDone != nil && dorksPath != "" {
 		e.events.OnDorksDone(dorksPath)
 	}
-	return nil
 }
 
 func (e *Engine) monitorLoop(done <-chan struct{}) {
@@ -285,14 +396,18 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		select {
 		case <-domainCtx.Done():
 			e.persist(hostKey, pages, errors, false, visited, queue)
+			_ = e.exporter.ForceFlush()
 			return
 		case <-e.stopCh:
 			e.persist(hostKey, pages, errors, false, visited, queue)
+			_ = e.exporter.ForceFlush()
 			return
-		case <-e.pauseCh:
-			e.persist(hostKey, pages, errors, false, visited, queue)
-			<-e.resumeCh
 		default:
+			if !e.waitBrief(domainCtx) {
+				e.persist(hostKey, pages, errors, false, visited, queue)
+				_ = e.exporter.ForceFlush()
+				return
+			}
 		}
 
 		snap := e.throttle.Current()
@@ -329,24 +444,25 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 		if body != "" {
 			doc, _ = html.Parse(strings.NewReader(body))
 		}
-		e.kw.ExtractPage(hostKey, rawURL, doc)
+		kwResults := e.kw.ExtractPage(hostKey, rawURL, doc)
+		if len(kwResults) > 0 {
+			e.dashboard.AddKeywords(len(kwResults))
+			for _, r := range kwResults {
+				_ = e.exporter.WriteKeywordIncremental(r.Keyword)
+			}
+		}
 		e.emitSnapshot(phaseLabel(int(e.phase.Load())), true, "")
 
+		e.setPhase(3, "Phase 3/4 — SQLi parameter scoring")
 		for _, link := range links {
 			link = canonicalURL(link)
 			if sameHost(u, link) && !visited[link] && !queued[link] {
 				queued[link] = true
 				queue = append(queue, link)
 			}
-			if scored := e.scorer.ScoreURL(hostKey, link, e.cfg.MinParamScore); len(scored) > 0 {
-				e.dashboard.AddParams(len(scored))
-			}
+			e.exportScoredParams(hostKey, e.scorer.ScoreURL(hostKey, link, e.cfg.MinParamScore))
 		}
-
-		e.setPhase(3, "Phase 3/4 — SQLi parameter scoring")
-		if scored := e.scorer.ScoreURL(hostKey, rawURL, e.cfg.MinParamScore); len(scored) > 0 {
-			e.dashboard.AddParams(len(scored))
-		}
+		e.exportScoredParams(hostKey, e.scorer.ScoreURL(hostKey, rawURL, e.cfg.MinParamScore))
 
 		e.dashboard.UpdateDomain(hostKey, pages, errors, false)
 		e.persist(hostKey, pages, errors, false, visited, queue)
@@ -354,6 +470,17 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 
 	e.dashboard.UpdateDomain(hostKey, pages, errors, true)
 	e.persist(hostKey, pages, errors, true, visited, queue)
+	_ = e.exporter.ForceFlush()
+}
+
+func (e *Engine) exportScoredParams(domain string, scored []params.Result) {
+	if len(scored) == 0 {
+		return
+	}
+	e.dashboard.AddParams(len(scored))
+	for _, r := range scored {
+		_ = e.exporter.WriteParamIncremental(r.Name, r.Score, string(r.Tier))
+	}
 }
 
 func (e *Engine) fetch(ctx context.Context, rawURL string) (string, []string, error) {

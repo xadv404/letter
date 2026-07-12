@@ -44,6 +44,10 @@ type Snapshot struct {
 	CollectedAt time.Time
 }
 
+const MaxGoroutines = 800
+
+const GracefulShutdown = 30 * time.Second
+
 type Controller struct {
 	mu sync.RWMutex
 
@@ -77,7 +81,7 @@ func (c *Controller) Refresh(goroutines int) Snapshot {
 	cpuVal := readCPU()
 	ramVal := readRAM()
 
-	level := classify(cpuVal, ramVal)
+	level := classify(cpuVal, ramVal, goroutines)
 	delay, depth, pages, workers := c.apply(level)
 
 	snap := Snapshot{
@@ -127,17 +131,22 @@ func readRAM() float64 {
 	return info.UsedPercent
 }
 
-func classify(cpu, ram float64) Level {
+func classify(cpu, ram float64, goroutines int) Level {
+	var level Level
 	switch {
 	case cpu >= 90 || ram >= 90:
-		return Critical
+		level = Critical
 	case cpu >= 75 || ram >= 80:
-		return High
+		level = High
 	case cpu >= 55 || ram >= 65:
-		return Moderate
+		level = Moderate
 	default:
-		return Normal
+		level = Normal
 	}
+	if goroutines >= MaxGoroutines && level < Critical {
+		level = Critical
+	}
+	return level
 }
 
 func (c *Controller) apply(level Level) (delayMS, depth, pageLimit, workers int) {

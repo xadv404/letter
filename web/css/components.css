@@ -522,6 +522,33 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
   padding: 0 1rem 1rem;
 }
 
+.discovery-chart {
+  width: 100%;
+  height: 140px;
+  display: block;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.decisions-box {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--muted);
+  flex: 1;
+  min-height: 120px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.75rem 1rem 1rem;
+  white-space: pre-wrap;
+}
+
+.card-sub {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--dim);
+}
+
 .table-wrap.panel-grow {
   margin-bottom: 0;
   overflow-y: auto;

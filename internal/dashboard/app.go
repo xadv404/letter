@@ -49,6 +49,12 @@ type configDTO struct {
 	DelayMS    int    `json:"delay_ms"`
 }
 
+type timePointDTO struct {
+	T        string `json:"t"`
+	Keywords int    `json:"keywords"`
+	Params   int    `json:"params"`
+}
+
 type snapshotDTO struct {
 	Running     bool                   `json:"running"`
 	Phase       int                    `json:"phase"`
@@ -59,12 +65,14 @@ type snapshotDTO struct {
 	Throttle    string                 `json:"throttle"`
 	Workers     int                    `json:"workers"`
 	DelayMS     int                    `json:"delay_ms"`
+	Goroutines  int                    `json:"goroutines"`
 	Keywords    int                    `json:"keywords"`
 	Params      int                    `json:"params"`
 	Accepted    int                    `json:"accepted"`
 	Rejected    int                    `json:"rejected"`
 	Domains     []monitor.DomainStatus `json:"domains"`
 	Decisions   []decisionDTO          `json:"decisions"`
+	Timeseries  []timePointDTO         `json:"timeseries"`
 	DorkPreview string                 `json:"dork_preview"`
 	DorksPath   string                 `json:"dorks_path"`
 	DomainFile  string                 `json:"domain_file"`
@@ -96,8 +104,8 @@ func (a *App) broadcastSnapshot(snap monitor.UISnapshot) {
 func (a *App) toSnapshotDTO(snap monitor.UISnapshot) snapshotDTO {
 	decs := make([]decisionDTO, 0, len(snap.Decisions))
 	start := 0
-	if len(snap.Decisions) > 20 {
-		start = len(snap.Decisions) - 20
+	if len(snap.Decisions) > 100 {
+		start = len(snap.Decisions) - 100
 	}
 	for _, d := range snap.Decisions[start:] {
 		decs = append(decs, decisionDTO{
@@ -105,13 +113,20 @@ func (a *App) toSnapshotDTO(snap monitor.UISnapshot) snapshotDTO {
 			Reason: d.Reason, Accepted: d.Accepted,
 		})
 	}
+	ts := make([]timePointDTO, 0, len(snap.Series))
+	for _, p := range snap.Series {
+		ts = append(ts, timePointDTO{
+			T: p.At.Format(time.RFC3339), Keywords: p.Keywords, Params: p.Params,
+		})
+	}
 	return snapshotDTO{
 		Running: snap.Running, Phase: snap.Phase, PhaseLabel: snap.PhaseLabel,
 		Elapsed: snap.Elapsed.String(), CPU: snap.CPU, RAM: snap.RAM,
 		Throttle: snap.Throttle, Workers: snap.Workers, DelayMS: snap.DelayMS,
+		Goroutines: snap.Goroutines,
 		Keywords: snap.Keywords, Params: snap.Params,
 		Accepted: snap.Accepted, Rejected: snap.Rejected,
-		Domains: snap.Domains, Decisions: decs,
+		Domains: snap.Domains, Decisions: decs, Timeseries: ts,
 		DorkPreview: snap.DorkPreview, DorksPath: a.dorksPath,
 		DomainFile: a.domainFile,
 	}
@@ -144,27 +159,53 @@ func (a *App) handleConfigPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.applyConfigDTO(in)
+	if err := a.cfg.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	writeJSON(w, a.configResponse())
 }
 
 func (a *App) applyConfigDTO(in configDTO) {
 	if in.Depth > 0 {
-		a.cfg.Depth = in.Depth
+		a.cfg.Depth = clamp(in.Depth, config.MinDepth, config.MaxDepth)
 	}
 	if in.PageLimit > 0 {
-		a.cfg.PageLimit = in.PageLimit
+		a.cfg.PageLimit = clamp(in.PageLimit, config.MinPageLimit, config.MaxPageLimit)
 	}
 	if in.Workers > 0 {
 		a.cfg.Workers = in.Workers
+		if a.cfg.Workers < 1 {
+			a.cfg.Workers = 1
+		}
+		if a.cfg.Workers > 64 {
+			a.cfg.Workers = 64
+		}
 	}
 	if in.DelayMS > 0 {
 		a.cfg.DelayMS = in.DelayMS
+		if a.cfg.DelayMS < 50 {
+			a.cfg.DelayMS = 50
+		}
+		if a.cfg.DelayMS > 5000 {
+			a.cfg.DelayMS = 5000
+		}
 	}
 	if in.DomainFile != "" {
 		a.domainFile = in.DomainFile
 		a.cfg.DomainFile = in.DomainFile
 	}
 	a.cfg.StateFile = filepath.Join(a.cfg.OutputDir, "crawl.state.json")
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func (a *App) configResponse() configDTO {

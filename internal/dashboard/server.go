@@ -6,7 +6,8 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
-	"time"
+
+	"github.com/xadv404/letter/internal/throttle"
 )
 
 // Run starts the embedded HTML dashboard in a native GUI window.
@@ -49,7 +50,7 @@ func Run() error {
 	go func() { _ = srv.Serve(ln) }()
 
 	runGUI(url, func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), throttle.GracefulShutdown)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 	})

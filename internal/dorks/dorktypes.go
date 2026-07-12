@@ -54,6 +54,9 @@ func AllDorkTypes() []DorkType {
 		{ID: "v18", Family: "param_volume", Pattern: `inurl:forum.php?{param}=`, Slots: []string{SlotParam}, Volume: "high"},
 		{ID: "v19", Family: "param_volume", Pattern: `inurl:profile.php?{param}=`, Slots: []string{SlotParam}, Volume: "high"},
 		{ID: "v20", Family: "param_volume", Pattern: `inurl:download.php?{param}=`, Slots: []string{SlotParam}, Volume: "high"},
+		{ID: "v21", Family: "param_volume", Pattern: `inurl:.jsp?{param}=`, Slots: []string{SlotParam}, Volume: "high"},
+		{ID: "v22", Family: "param_volume", Pattern: `inurl:.cfm?{param}=`, Slots: []string{SlotParam}, Volume: "high"},
+		{ID: "v23", Family: "param_volume", Pattern: `inurl:.aspx?{param}=`, Slots: []string{SlotParam}, Volume: "high"},
 
 		// ── Clone: keyword × param (2 slots) — find similar sites ──
 		{ID: "k01", Family: "keyword_match", Pattern: `inurl:{param}= intext:{kw}`, Slots: []string{SlotParam, SlotKW}, Volume: "medium"},
@@ -66,6 +69,9 @@ func AllDorkTypes() []DorkType {
 		{ID: "k08", Family: "keyword_match", Pattern: `filetype:php inurl:{param}= intext:{kw}`, Slots: []string{SlotParam, SlotKW}, Volume: "medium"},
 		{ID: "k09", Family: "keyword_match", Pattern: `allinurl:{param} {kw}`, Slots: []string{SlotParam, SlotKW}, Volume: "medium"},
 		{ID: "k10", Family: "keyword_match", Pattern: `"{kw}" inurl:{param}=`, Slots: []string{SlotKW, SlotParam}, Volume: "medium"},
+		{ID: "k11", Family: "keyword_match", Pattern: `filetype:jsp inurl:{param}= intext:{kw}`, Slots: []string{SlotParam, SlotKW}, Volume: "medium"},
+		{ID: "k12", Family: "keyword_match", Pattern: `filetype:cfm inurl:{param}= intext:{kw}`, Slots: []string{SlotParam, SlotKW}, Volume: "medium"},
+		{ID: "k13", Family: "keyword_match", Pattern: `filetype:asp inurl:{param}= intext:{kw}`, Slots: []string{SlotParam, SlotKW}, Volume: "medium"},
 
 		// ── Path context: path × param × keyword (3 slots) ──
 		{ID: "p01", Family: "path_context", Pattern: `inurl:{path} inurl:{param}= intext:{kw}`, Slots: []string{SlotPath, SlotParam, SlotKW}, Volume: "medium"},

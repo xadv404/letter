@@ -20,10 +20,13 @@ func TestApplyCriticalThrottle(t *testing.T) {
 }
 
 func TestClassifyLevels(t *testing.T) {
-	if classify(50, 50) != Normal {
+	if classify(50, 50, 100) != Normal {
 		t.Fatal("expected NORMAL")
 	}
-	if classify(95, 50) != Critical {
+	if classify(95, 50, 100) != Critical {
 		t.Fatal("expected CRITICAL for high CPU")
+	}
+	if classify(50, 50, MaxGoroutines) != Critical {
+		t.Fatal("expected CRITICAL for goroutine cap")
 	}
 }

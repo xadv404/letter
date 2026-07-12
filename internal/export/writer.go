@@ -34,7 +34,7 @@ type Writer struct {
 	flushEvery     time.Duration
 }
 
-func New(outputDir string) (*Writer, error) {
+func New(outputDir string, resume bool) (*Writer, error) {
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -44,7 +44,13 @@ func New(outputDir string) (*Writer, error) {
 	dorksPath := filepath.Join(outputDir, "dorks.txt")
 
 	open := func(p string) (*os.File, error) {
-		return os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		flags := os.O_CREATE | os.O_WRONLY
+		if resume {
+			flags |= os.O_APPEND
+		} else {
+			flags |= os.O_TRUNC
+		}
+		return os.OpenFile(p, flags, 0o644)
 	}
 	typesFile, err := open(typesPath)
 	if err != nil {
@@ -69,7 +75,7 @@ func New(outputDir string) (*Writer, error) {
 		return nil, err
 	}
 
-	return &Writer{
+	w := &Writer{
 		outputDir:      outputDir,
 		typesPath:      typesPath,
 		keywordsPath:   keywordsPath,
@@ -85,7 +91,65 @@ func New(outputDir string) (*Writer, error) {
 		dorksWriter:    bufio.NewWriter(dorksFile),
 		flushEvery:     2 * time.Second,
 		lastFlush:      time.Now(),
-	}, nil
+	}
+
+	if resume {
+		w.kwHeader = fileHasContent(keywordsPath)
+		w.pmHeader = fileHasContent(paramsPath)
+		w.typesHeader = fileHasContent(typesPath)
+		w.dorksHeader = fileHasContent(dorksPath)
+	}
+	return w, nil
+}
+
+func fileHasContent(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Size() > 0
+}
+
+func ts() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// WriteKeywordIncremental appends a keyword discovered during crawl.
+func (w *Writer) WriteKeywordIncremental(keyword string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.kwHeader {
+		if _, err := fmt.Fprintf(w.keywordsWriter, "# Letter Recon keywords — %s\n", ts()); err != nil {
+			return err
+		}
+		w.kwHeader = true
+	}
+	_, err := fmt.Fprintf(w.keywordsWriter, "%s\t%s\n", ts(), keyword)
+	return err
+}
+
+// WriteParamIncremental appends a scored parameter discovered during crawl.
+func (w *Writer) WriteParamIncremental(name string, score int, tier string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.pmHeader {
+		if _, err := fmt.Fprintf(w.paramsWriter, "# Letter Recon params — %s\n", ts()); err != nil {
+			return err
+		}
+		w.pmHeader = true
+	}
+	_, err := fmt.Fprintf(w.paramsWriter, "%s\t%s\t%d\t%s\n", ts(), name, score, tier)
+	return err
+}
+
+// ForceFlush writes all buffered data to disk immediately.
+func (w *Writer) ForceFlush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, bw := range []*bufio.Writer{w.typesWriter, w.keywordsWriter, w.paramsWriter, w.dorksWriter} {
+		if err := bw.Flush(); err != nil {
+			return err
+		}
+	}
+	w.lastFlush = time.Now()
+	return nil
 }
 
 // WriteMaterials exports types, keywords, params and auto-assembled dorks.
@@ -94,8 +158,7 @@ func (w *Writer) WriteMaterials(m dorks.Materials) error {
 	defer w.mu.Unlock()
 
 	if !w.typesHeader {
-		ts := time.Now().UTC().Format(time.RFC3339)
-		fmt.Fprintf(w.typesWriter, "# Letter Recon dork types — %s\n", ts)
+		fmt.Fprintf(w.typesWriter, "# Letter Recon dork types — %s\n", ts())
 		fmt.Fprintf(w.typesWriter, "# family | volume | slots | pattern\n")
 		w.typesHeader = true
 	}
@@ -107,41 +170,38 @@ func (w *Writer) WriteMaterials(m dorks.Materials) error {
 	}
 
 	if !w.kwHeader {
-		ts := time.Now().UTC().Format(time.RFC3339)
-		fmt.Fprintf(w.keywordsWriter, "# Letter Recon keywords — %s\n", ts)
+		fmt.Fprintf(w.keywordsWriter, "# Letter Recon keywords — %s\n", ts())
 		w.kwHeader = true
 	}
 	for _, kw := range m.Keywords {
-		if _, err := fmt.Fprintln(w.keywordsWriter, kw); err != nil {
+		if _, err := fmt.Fprintf(w.keywordsWriter, "%s\t%s\n", ts(), kw); err != nil {
 			return err
 		}
 	}
 	for _, ph := range m.Phrases {
-		if _, err := fmt.Fprintf(w.keywordsWriter, "\"%s\"\n", ph); err != nil {
+		if _, err := fmt.Fprintf(w.keywordsWriter, "%s\t\"%s\"\n", ts(), ph); err != nil {
 			return err
 		}
 	}
 
 	if !w.pmHeader {
-		ts := time.Now().UTC().Format(time.RFC3339)
-		fmt.Fprintf(w.paramsWriter, "# Letter Recon params — %s\n", ts)
+		fmt.Fprintf(w.paramsWriter, "# Letter Recon params — %s\n", ts())
 		w.pmHeader = true
 	}
 	for _, pm := range m.Params {
-		if _, err := fmt.Fprintln(w.paramsWriter, pm); err != nil {
+		if _, err := fmt.Fprintf(w.paramsWriter, "%s\t%s\n", ts(), pm); err != nil {
 			return err
 		}
 	}
 	for _, path := range m.Paths {
-		if _, err := fmt.Fprintf(w.paramsWriter, "# path:%s\n", path); err != nil {
+		if _, err := fmt.Fprintf(w.paramsWriter, "%s\t#path:%s\n", ts(), path); err != nil {
 			return err
 		}
 	}
 
 	assembled := dorks.AssembleStrings(m)
 	if !w.dorksHeader {
-		ts := time.Now().UTC().Format(time.RFC3339)
-		fmt.Fprintf(w.dorksWriter, "# Letter Recon dorks — %s\n", ts)
+		fmt.Fprintf(w.dorksWriter, "# Letter Recon dorks — %s\n", ts())
 		fmt.Fprintf(w.dorksWriter, "# Auto-assembled: dorktypes × keywords × params\n")
 		w.dorksHeader = true
 	}
@@ -195,8 +255,8 @@ func (w *Writer) Close() error {
 	return first
 }
 
-func (w *Writer) DorksPath() string     { return w.dorksPath }
-func (w *Writer) TypesPath() string     { return w.typesPath }
-func (w *Writer) KeywordsPath() string  { return w.keywordsPath }
-func (w *Writer) ParamsPath() string    { return w.paramsPath }
-func (w *Writer) OutputDir() string     { return w.outputDir }
+func (w *Writer) DorksPath() string    { return w.dorksPath }
+func (w *Writer) TypesPath() string    { return w.typesPath }
+func (w *Writer) KeywordsPath() string { return w.keywordsPath }
+func (w *Writer) ParamsPath() string   { return w.paramsPath }
+func (w *Writer) OutputDir() string    { return w.outputDir }

@@ -18,12 +18,19 @@ type DomainStatus struct {
 	Finished bool
 }
 
+type TimePoint struct {
+	At       time.Time
+	Keywords int
+	Params   int
+}
+
 type Dashboard struct {
 	mu            sync.RWMutex
 	started       time.Time
 	domains       map[string]*DomainStatus
 	keywordsFound int
 	paramsFound   int
+	series        []TimePoint
 }
 
 func New() *Dashboard {
@@ -60,10 +67,30 @@ func (d *Dashboard) AddKeywords(n int) {
 	d.mu.Unlock()
 }
 
+func (d *Dashboard) RecordSeries(keywords, params int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.series = append(d.series, TimePoint{
+		At: time.Now().UTC(), Keywords: keywords, Params: params,
+	})
+	const maxPoints = 120
+	if len(d.series) > maxPoints {
+		d.series = d.series[len(d.series)-maxPoints:]
+	}
+}
+
 func (d *Dashboard) AddParams(n int) {
 	d.mu.Lock()
 	d.paramsFound += n
 	d.mu.Unlock()
+}
+
+func (d *Dashboard) Series() []TimePoint {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	out := make([]TimePoint, len(d.series))
+	copy(out, d.series)
+	return out
 }
 
 func (d *Dashboard) Render(w io.Writer, snap throttle.Snapshot, decisions []params.FilterDecision, accepted, rejected int) {
@@ -91,8 +118,8 @@ func (d *Dashboard) Render(w io.Writer, snap throttle.Snapshot, decisions []para
 	if len(decisions) > 0 {
 		fmt.Fprintln(w, "\nLast filter decisions:")
 		start := 0
-		if len(decisions) > 10 {
-			start = len(decisions) - 10
+		if len(decisions) > 100 {
+			start = len(decisions) - 100
 		}
 		for _, dec := range decisions[start:] {
 			flag := "REJECT"
