@@ -1,0 +1,19 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {}
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "Letter Recon",
+          "version": "1.1.4.0"
+        },
+        "description": "Letter Recon",
+        "minimum-os": "win10",
+        "execution-level": "as invoker",
+        "dpi-awareness": "per monitor v2"
+      }
+    }
+  }
+}
