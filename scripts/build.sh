@@ -7,15 +7,12 @@ LDFLAGS='-s -w -H windowsgui'
 
 mkdir -p "$DIST"
 
-if ! command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then
-	echo "error: install mingw — apt install gcc-mingw-w64-x86-64" >&2
-	exit 1
-fi
+echo "→ sync dashboard assets"
+go generate ./internal/dashboard/...
 
-echo "→ letter.exe (Windows amd64 GUI)"
-CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=x86_64-w64-mingw32-gcc \
+echo "→ letter.exe (Windows amd64, HTML dashboard)"
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
 	go build -ldflags="$LDFLAGS" -o "$DIST/letter.exe" "$ROOT/cmd/letter"
 
 echo ""
 ls -lh "$DIST/letter.exe"
-echo "Upload: gh release create vX.Y.Z dist/letter.exe --generate-notes"

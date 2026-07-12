@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — Letter Recon</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='100%25' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-family='system-ui' font-weight='800' font-size='16'%3EL%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components.css" />
+</head>
+<body>
+  <div class="ambient"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="grid-bg"></div></div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand"><a href="index.html"><div class="brand-icon">L</div>Letter Recon</a></div>
+      <nav class="sidebar-nav">
+        <div class="nav-category"><div class="nav-category-label">Général</div><a href="index.html" class="nav-link"><span class="icon">◉</span> Dashboard</a></div>
+        <div class="nav-category">
+          <div class="nav-category-label">Extract</div>
+          <a href="crawl.html" class="nav-link"><span class="icon">🌐</span> Crawl</a>
+          <a href="keywords.html" class="nav-link"><span class="icon">🔤</span> Keywords</a>
+          <a href="sqli.html" class="nav-link"><span class="icon">🎯</span> SQLi</a>
+          <a href="dorks.html" class="nav-link"><span class="icon">🔍</span> Dorks</a>
+          <a href="output.html" class="nav-link"><span class="icon">📁</span> Output</a>
+        </div>
+        <div class="nav-category"><div class="nav-category-label">Settings</div><a href="settings.html" class="nav-link"><span class="icon">⚙️</span> Configuration</a></div>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle" type="button" aria-label="Menu">☰</button>
+          <div><div class="page-title">Configuration</div><div class="page-subtitle">Settings</div></div>
+        </div>
+        <div class="topbar-badge"><span class="dot"></span> Dashboard HTML</div>
+      </header>
+      <div class="content">
+        <div class="content-header">
+          <h1>Paramètres</h1>
+          <p>Réglages du pipeline — sauvegardés localement dans l'application.</p>
+        </div>
+
+        <form id="settings-form">
+          <div class="settings-section">
+            <div class="settings-section-header"><h2>Crawl</h2><p>Phase 1</p></div>
+            <div class="settings-body">
+              <div class="field-row">
+                <div class="field"><label for="depth">Profondeur max</label><input id="depth" name="depth" type="number" min="1" max="10" /></div>
+                <div class="field"><label for="pages">Pages / domaine</label><input id="pages" name="page_limit" type="number" min="10" max="500" /></div>
+                <div class="field"><label for="workers">Workers</label><input id="workers" name="workers" type="number" min="1" max="64" /></div>
+              </div>
+              <div class="field"><label for="delay">Délai (ms)</label><input id="delay" name="delay_ms" type="number" min="50" max="5000" /></div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <div class="settings-section-header"><h2>SQLi & export</h2><p>Phases 3–4</p></div>
+            <div class="settings-body">
+              <div class="field-row">
+                <div class="field"><label for="minscore">Score minimum</label><input id="minscore" name="min_param_score" type="number" min="50" max="100" /></div>
+                <div class="field"><label for="output">Dossier dorks</label><input id="output" name="output_dir" type="text" /></div>
+              </div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn-ctrl primary" type="submit">💾 Enregistrer</button>
+            <span id="save-msg" style="color:var(--emerald);font-size:0.85rem;align-self:center"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script>
+    LetterAPI.getConfig().then(function (c) {
+      document.getElementById("depth").value = c.depth;
+      document.getElementById("pages").value = c.page_limit;
+      document.getElementById("workers").value = c.workers;
+      document.getElementById("delay").value = c.delay_ms;
+      document.getElementById("minscore").value = c.min_param_score;
+      document.getElementById("output").value = c.output_dir;
+    });
+    document.getElementById("settings-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var cfg = {
+        depth: parseInt(document.getElementById("depth").value, 10),
+        page_limit: parseInt(document.getElementById("pages").value, 10),
+        workers: parseInt(document.getElementById("workers").value, 10),
+        delay_ms: parseInt(document.getElementById("delay").value, 10),
+        min_param_score: parseInt(document.getElementById("minscore").value, 10),
+        output_dir: document.getElementById("output").value,
+      };
+      LetterAPI.putConfig(cfg).then(function () {
+        document.getElementById("save-msg").textContent = "Enregistré ✓";
+        setTimeout(function () { document.getElementById("save-msg").textContent = ""; }, 2500);
+      }).catch(function (err) { alert(err.message); });
+    });
+  </script>
+</body>
+</html>

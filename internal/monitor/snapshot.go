@@ -7,7 +7,7 @@ import (
 	"github.com/xadv404/letter/internal/throttle"
 )
 
-// UISnapshot is a thread-safe copy of dashboard state for the desktop UI.
+// UISnapshot is a thread-safe copy of dashboard state for the web UI.
 type UISnapshot struct {
 	Elapsed    time.Duration
 	Phase      int

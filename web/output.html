@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Keywords — Letter Recon</title>
+  <title>Output — Letter Recon</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='100%25' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-family='system-ui' font-weight='800' font-size='16'%3EL%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -29,62 +29,57 @@
         </div>
         <div class="nav-category"><div class="nav-category-label">Settings</div><a href="settings.html" class="nav-link"><span class="icon">⚙️</span> Configuration</a></div>
       </nav>
-      <div class="sidebar-footer"><a href="https://github.com/xadv404/letter/releases/latest">↓ Télécharger v1.0.1</a></div>
+      <div class="sidebar-footer"><a href="https://github.com/xadv404/letter/releases/latest">↓ Télécharger</a></div>
     </aside>
     <div class="main">
       <header class="topbar">
         <div class="topbar-left">
           <button class="menu-toggle" type="button" aria-label="Menu">☰</button>
-          <div><div class="page-title">Keywords</div><div class="page-subtitle">Phase 2 · Extract</div></div>
+          <div><div class="page-title">Output</div><div class="page-subtitle">Résultat final · Dorks uniquement</div></div>
         </div>
-        <div class="topbar-badge"><span class="dot"></span> Phase 2</div>
+        <div class="topbar-badge"><span class="dot"></span> dorks.txt</div>
       </header>
       <div class="content">
         <div class="content-header">
-          <h1>Extraction intelligente</h1>
-          <p>Mots-clés pondérés par structure HTML, filtrés et enrichis en n-grammes contextuels.</p>
+          <h1>Sortie — Google Dorks</h1>
+          <p>Seul livrable exporté : <code>dorks.txt</code>. Le crawl, les keywords et le scoring SQLi restent en mémoire pendant l'exécution.</p>
         </div>
-        <div class="stats-grid">
-          <div class="stat-card cyan"><div class="label">H1</div><div class="value">×5</div><div class="hint">Poids maximal</div></div>
-          <div class="stat-card blue"><div class="label">Stopwords</div><div class="value">1 297</div><div class="hint">Anglais embarqué</div></div>
-          <div class="stat-card violet"><div class="label">Techniques</div><div class="value">300+</div><div class="hint">Termes exclus</div></div>
-          <div class="stat-card amber"><div class="label">Limite</div><div class="value">200k</div><div class="hint">Keywords / session</div></div>
-        </div>
-        <div class="card-grid">
-          <div class="card">
-            <div class="card-header"><div class="card-icon cyan">📊</div><h3>Pondération</h3></div>
-            <ul>
-              <li><code>H1</code> ×5 · <code>H2</code> ×4 · <code>H3</code> ×3</li>
-              <li><code>H4–H6</code> ×2 · <code>P/LI/SPAN</code> ×1</li>
-              <li>Phrases complètes des titres (×2 bonus)</li>
-            </ul>
-          </div>
-          <div class="card">
-            <div class="card-header"><div class="card-icon blue">🧹</div><h3>Filtrage</h3></div>
-            <ul>
-              <li>Stopwords anglais embarqués</li>
-              <li>Termes techniques exclus (CSS, JS…)</li>
-              <li>Longueur 2 – 100 caractères</li>
-            </ul>
-          </div>
-          <div class="card">
-            <div class="card-header"><div class="card-icon violet">🔗</div><h3>N-grammes</h3></div>
-            <ul>
-              <li>Bigrams & trigrams adjacents</li>
-              <li>Paires croisées dans les headings</li>
-              <li>Score cumulatif par occurrence</li>
-            </ul>
-          </div>
-        </div>
-        <pre><code>&lt;h1&gt;User Search System&lt;/h1&gt;
-&lt;p&gt;Search by ID or email&lt;/p&gt;
 
-→ "user search system"  (heading, score 10)
-→ "search"              (token, score 5)
-→ "user search"         (bigram)</code></pre>
+        <div class="stats-grid">
+          <div class="stat-card violet">
+            <div class="label">Fichier</div>
+            <div class="value">dorks.txt</div>
+            <div class="hint">Une ligne = un dork</div>
+          </div>
+          <div class="stat-card cyan">
+            <div class="label">Format</div>
+            <div class="value">Google</div>
+            <div class="hint">inurl · intext · site · filetype</div>
+          </div>
+          <div class="stat-card emerald">
+            <div class="label">Export</div>
+            <div class="value">Save as</div>
+            <div class="hint">Dialogue à la fin du crawl</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 1.5rem;">
+          <div class="card-header"><div class="card-icon violet">💾</div><h3>Comment ça marche</h3></div>
+          <ul>
+            <li>Pendant le crawl, les dorks sont écrites dans <code>output/dorks.txt</code></li>
+            <li>À la fin, la GUI ouvre « Enregistrer sous » pour choisir l'emplacement final</li>
+            <li>Si vous annulez, le fichier temporaire reste dans le dossier dorks output</li>
+            <li>Aucun fichier <code>urls_</code>, <code>keywords_</code> ou <code>parameters_</code> n'est généré</li>
+          </ul>
+        </div>
+
+        <pre><code># Letter Recon dorks — generated 2026-07-12T13:00:00Z
+inurl:id= intext:admin site:example.com
+inurl:search_term= intext:"user search system"
+site:example.com filetype:php inurl:filter_by=</code></pre>
       </div>
     </div>
   </div>
-  <script src="js/app.js"></script>
+  <script src="js/api.js"></script>
 </body>
 </html>
