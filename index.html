@@ -3,1081 +3,192 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Letter Recon — reconnaissance automatisée : crawl, keywords, SQLi scoring, Google dorks." />
-  <meta property="og:title" content="Letter Recon" />
-  <meta property="og:description" content="De la liste de domaines aux Google dorks ciblées — crawl, keywords, SQLi scoring, export." />
-  <meta property="og:type" content="website" />
+  <meta name="description" content="Letter Recon — dashboard de reconnaissance automatisée." />
   <meta name="theme-color" content="#06080c" />
-  <title>Letter Recon</title>
+  <title>Dashboard — Letter Recon</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='100%25' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-family='system-ui' font-weight='800' font-size='16'%3EL%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --bg: #06080c;
-      --bg-elevated: #0c1018;
-      --card: rgba(16, 22, 32, 0.72);
-      --card-hover: rgba(22, 30, 44, 0.88);
-      --border: rgba(148, 163, 184, 0.12);
-      --border-bright: rgba(56, 189, 248, 0.25);
-      --text: #f1f5f9;
-      --muted: #94a3b8;
-      --dim: #64748b;
-      --blue: #3b82f6;
-      --cyan: #22d3ee;
-      --violet: #8b5cf6;
-      --emerald: #10b981;
-      --amber: #f59e0b;
-      --rose: #f43f5e;
-      --radius: 16px;
-      --radius-sm: 10px;
-      --font: "Inter", system-ui, sans-serif;
-      --mono: "JetBrains Mono", Consolas, monospace;
-      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-      --glow: 0 0 60px rgba(59, 130, 246, 0.15);
-    }
-
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html { scroll-behavior: smooth; }
-
-    body {
-      font-family: var(--font);
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.65;
-      overflow-x: hidden;
-    }
-
-    /* ── Ambient background ── */
-    .ambient {
-      position: fixed;
-      inset: 0;
-      z-index: -1;
-      overflow: hidden;
-      pointer-events: none;
-    }
-
-    .orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(100px);
-      opacity: 0.45;
-      animation: drift 20s ease-in-out infinite;
-    }
-
-    .orb-1 {
-      width: 600px; height: 600px;
-      background: radial-gradient(circle, #1d4ed8, transparent 70%);
-      top: -200px; left: -100px;
-    }
-
-    .orb-2 {
-      width: 500px; height: 500px;
-      background: radial-gradient(circle, #0891b2, transparent 70%);
-      top: 30%; right: -150px;
-      animation-delay: -7s;
-    }
-
-    .orb-3 {
-      width: 400px; height: 400px;
-      background: radial-gradient(circle, #6d28d9, transparent 70%);
-      bottom: -100px; left: 30%;
-      animation-delay: -14s;
-    }
-
-    .grid-bg {
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
-      background-size: 64px 64px;
-      mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent);
-    }
-
-    @keyframes drift {
-      0%, 100% { transform: translate(0, 0) scale(1); }
-      33% { transform: translate(30px, -20px) scale(1.05); }
-      66% { transform: translate(-20px, 15px) scale(0.95); }
-    }
-
-    /* ── Layout ── */
-    .wrap { max-width: 1140px; margin: 0 auto; padding: 0 1.5rem; }
-
-    a { color: var(--cyan); text-decoration: none; transition: color 0.2s; }
-    a:hover { color: #67e8f9; }
-
-    /* ── Nav ── */
-    nav {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      backdrop-filter: blur(20px) saturate(1.4);
-      background: rgba(6, 8, 12, 0.75);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .nav-inner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.9rem 0;
-      gap: 1rem;
-    }
-
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      font-weight: 800;
-      font-size: 1.05rem;
-      letter-spacing: -0.02em;
-      color: var(--text);
-    }
-
-    .logo-icon {
-      width: 32px; height: 32px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, var(--blue), var(--cyan));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.85rem;
-      box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
-    }
-
-    .nav-links {
-      display: flex;
-      gap: 0.25rem;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
-
-    .nav-links::-webkit-scrollbar { display: none; }
-
-    .nav-links a {
-      padding: 0.45rem 0.75rem;
-      border-radius: 8px;
-      font-size: 0.82rem;
-      font-weight: 500;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .nav-links a:hover {
-      background: rgba(255,255,255,0.05);
-      color: var(--text);
-      text-decoration: none;
-    }
-
-    .nav-cta {
-      padding: 0.5rem 1rem !important;
-      background: linear-gradient(135deg, var(--blue), #2563eb) !important;
-      color: white !important;
-      border-radius: 8px !important;
-      font-weight: 600 !important;
-      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35);
-    }
-
-    .nav-cta:hover { transform: translateY(-1px); color: white !important; }
-
-    .nav-toggle {
-      display: none;
-      width: 40px; height: 40px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      cursor: pointer;
-      font-size: 1.1rem;
-    }
-
-    /* ── Hero ── */
-    .hero {
-      padding: 5rem 0 4rem;
-      text-align: center;
-    }
-
-    .hero-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.4rem 1rem 0.4rem 0.5rem;
-      border-radius: 999px;
-      background: rgba(59, 130, 246, 0.1);
-      border: 1px solid rgba(59, 130, 246, 0.25);
-      font-size: 0.78rem;
-      font-weight: 600;
-      color: #93c5fd;
-      margin-bottom: 1.5rem;
-    }
-
-    .hero-badge span.dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--emerald);
-      box-shadow: 0 0 12px var(--emerald);
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    h1 {
-      font-size: clamp(2.5rem, 6vw, 4rem);
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 1.1;
-      margin-bottom: 1.25rem;
-    }
-
-    h1 .gradient {
-      background: linear-gradient(135deg, #fff 0%, #94a3b8 50%, var(--cyan) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .hero-desc {
-      max-width: 560px;
-      margin: 0 auto 2rem;
-      font-size: 1.125rem;
-      color: var(--muted);
-      font-weight: 400;
-    }
-
-    .hero-actions {
-      display: flex;
-      gap: 0.75rem;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-bottom: 3.5rem;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.85rem 1.5rem;
-      border-radius: var(--radius-sm);
-      font-weight: 600;
-      font-size: 0.95rem;
-      transition: all 0.2s;
-      border: 1px solid transparent;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--blue), #1d4ed8);
-      color: white;
-      box-shadow: 0 8px 32px rgba(59, 130, 246, 0.4);
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 40px rgba(59, 130, 246, 0.5);
-      text-decoration: none;
-      color: white;
-    }
-
-    .btn-ghost {
-      background: rgba(255,255,255,0.04);
-      border-color: var(--border);
-      color: var(--text);
-    }
-
-    .btn-ghost:hover {
-      background: rgba(255,255,255,0.08);
-      text-decoration: none;
-      color: var(--text);
-    }
-
-    /* Pipeline visual */
-    .pipeline-visual {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0;
-      flex-wrap: wrap;
-      padding: 1.5rem;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      backdrop-filter: blur(12px);
-      box-shadow: var(--shadow);
-    }
-
-    .pipe-step {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 1rem 1.25rem;
-      min-width: 120px;
-    }
-
-    .pipe-icon {
-      width: 48px; height: 48px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.4rem;
-      margin-bottom: 0.6rem;
-      border: 1px solid var(--border);
-    }
-
-    .pipe-step:nth-child(1) .pipe-icon { background: rgba(59,130,246,0.15); }
-    .pipe-step:nth-child(3) .pipe-icon { background: rgba(34,211,238,0.12); }
-    .pipe-step:nth-child(5) .pipe-icon { background: rgba(245,158,11,0.12); }
-    .pipe-step:nth-child(7) .pipe-icon { background: rgba(139,92,246,0.15); }
-
-    .pipe-step strong { font-size: 0.85rem; margin-bottom: 0.15rem; }
-    .pipe-step small { font-size: 0.72rem; color: var(--dim); }
-
-    .pipe-arrow {
-      color: var(--dim);
-      font-size: 1.2rem;
-      padding: 0 0.25rem;
-    }
-
-    /* Stats */
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1rem;
-      margin: 3rem 0;
-    }
-
-    .stat {
-      text-align: center;
-      padding: 1.25rem;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      backdrop-filter: blur(8px);
-    }
-
-    .stat-value {
-      font-size: 1.75rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      background: linear-gradient(135deg, var(--text), var(--cyan));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .stat-label {
-      font-size: 0.78rem;
-      color: var(--dim);
-      margin-top: 0.25rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-weight: 600;
-    }
-
-    /* ── Sections ── */
-    section {
-      padding: 3.5rem 0;
-      scroll-margin-top: 5rem;
-    }
-
-    .section-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--cyan);
-      margin-bottom: 0.75rem;
-    }
-
-    .section-label::before {
-      content: "";
-      width: 24px; height: 2px;
-      background: linear-gradient(90deg, var(--cyan), transparent);
-      border-radius: 1px;
-    }
-
-    h2 {
-      font-size: clamp(1.6rem, 3vw, 2.1rem);
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      margin-bottom: 0.5rem;
-    }
-
-    .section-desc {
-      color: var(--muted);
-      max-width: 560px;
-      margin-bottom: 2rem;
-      font-size: 1rem;
-    }
-
-    /* Category cards */
-    .cat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 1.25rem;
-    }
-
-    .cat-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-      backdrop-filter: blur(12px);
-      transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .cat-card::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-      background: var(--accent-line, linear-gradient(90deg, var(--blue), var(--cyan)));
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .cat-card:hover {
-      background: var(--card-hover);
-      border-color: var(--border-bright);
-      transform: translateY(-4px);
-      box-shadow: var(--glow);
-    }
-
-    .cat-card:hover::before { opacity: 1; }
-
-    .cat-card.crawl { --accent-line: linear-gradient(90deg, #3b82f6, #60a5fa); }
-    .cat-card.keywords { --accent-line: linear-gradient(90deg, #22d3ee, #06b6d4); }
-    .cat-card.sqli { --accent-line: linear-gradient(90deg, #f59e0b, #ef4444); }
-    .cat-card.dorks { --accent-line: linear-gradient(90deg, #8b5cf6, #a78bfa); }
-    .cat-card.gui { --accent-line: linear-gradient(90deg, #10b981, #34d399); }
-    .cat-card.output { --accent-line: linear-gradient(90deg, #64748b, #94a3b8); }
-
-    .cat-header {
-      display: flex;
-      align-items: center;
-      gap: 0.85rem;
-      margin-bottom: 1rem;
-    }
-
-    .cat-icon {
-      width: 44px; height: 44px;
-      border-radius: 11px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.25rem;
-      flex-shrink: 0;
-    }
-
-    .crawl .cat-icon { background: rgba(59,130,246,0.15); }
-    .keywords .cat-icon { background: rgba(34,211,238,0.12); }
-    .sqli .cat-icon { background: rgba(245,158,11,0.12); }
-    .dorks .cat-icon { background: rgba(139,92,246,0.15); }
-    .gui .cat-icon { background: rgba(16,185,129,0.12); }
-    .output .cat-icon { background: rgba(100,116,139,0.15); }
-
-    .cat-card h3 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
-    .cat-card ul {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-    }
-
-    .cat-card li {
-      font-size: 0.88rem;
-      color: var(--muted);
-      padding-left: 1.25rem;
-      position: relative;
-    }
-
-    .cat-card li::before {
-      content: "→";
-      position: absolute;
-      left: 0;
-      color: var(--dim);
-      font-size: 0.75rem;
-    }
-
-    /* Table */
-    .table-wrap {
-      overflow-x: auto;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background: var(--card);
-      backdrop-filter: blur(8px);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.88rem;
-    }
-
-    th {
-      text-align: left;
-      padding: 0.9rem 1.15rem;
-      font-size: 0.72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--dim);
-      background: rgba(0,0,0,0.25);
-      border-bottom: 1px solid var(--border);
-    }
-
-    td {
-      padding: 0.85rem 1.15rem;
-      border-bottom: 1px solid var(--border);
-      color: var(--muted);
-    }
-
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(255,255,255,0.02); }
-
-    .pill {
-      display: inline-block;
-      padding: 0.2rem 0.6rem;
-      border-radius: 6px;
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-    }
-
-    .pill-high { background: rgba(239,68,68,0.15); color: #fca5a5; }
-    .pill-med { background: rgba(245,158,11,0.15); color: #fcd34d; }
-    .pill-low { background: rgba(132,204,22,0.12); color: #bef264; }
-    .pill-ex { background: rgba(100,116,139,0.2); color: #94a3b8; }
-
-    code {
-      font-family: var(--mono);
-      font-size: 0.82em;
-      padding: 0.15rem 0.4rem;
-      border-radius: 5px;
-      background: rgba(0,0,0,0.35);
-      color: #7dd3fc;
-      border: 1px solid rgba(56,189,248,0.15);
-    }
-
-    pre {
-      margin-top: 1.25rem;
-      padding: 1.25rem 1.5rem;
-      border-radius: var(--radius-sm);
-      background: rgba(0,0,0,0.45);
-      border: 1px solid var(--border);
-      overflow-x: auto;
-      font-family: var(--mono);
-      font-size: 0.8rem;
-      line-height: 1.7;
-      color: #a5f3fc;
-    }
-
-    /* Files */
-    .files {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 0.75rem;
-    }
-
-    .file {
-      padding: 1rem 1.15rem;
-      border-radius: var(--radius-sm);
-      background: rgba(0,0,0,0.3);
-      border: 1px solid var(--border);
-      transition: border-color 0.2s;
-    }
-
-    .file:hover { border-color: var(--border-bright); }
-
-    .file-name {
-      font-family: var(--mono);
-      font-size: 0.8rem;
-      color: var(--cyan);
-      font-weight: 500;
-      margin-bottom: 0.3rem;
-    }
-
-    .file-desc { font-size: 0.78rem; color: var(--dim); }
-
-    .file-phase {
-      display: inline-block;
-      font-size: 0.65rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--dim);
-      margin-bottom: 0.4rem;
-    }
-
-    /* Footer */
-    footer {
-      margin-top: 2rem;
-      padding: 3rem 0;
-      border-top: 1px solid var(--border);
-      text-align: center;
-    }
-
-    .footer-logo {
-      font-weight: 800;
-      font-size: 1.1rem;
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.02em;
-    }
-
-    footer p { color: var(--dim); font-size: 0.85rem; }
-    footer .links { margin-top: 1rem; display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; }
-
-    /* Scroll reveal */
-    .reveal {
-      opacity: 0;
-      transform: translateY(24px);
-      transition: opacity 0.7s ease, transform 0.7s ease;
-    }
-
-    .reveal.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-      .stats { grid-template-columns: repeat(2, 1fr); }
-      .pipe-arrow { display: none; }
-      .pipeline-visual { gap: 0.5rem; }
-      .nav-toggle { display: flex; align-items: center; justify-content: center; }
-      .nav-links {
-        display: none;
-        position: absolute;
-        top: 100%; left: 0; right: 0;
-        flex-direction: column;
-        padding: 0.75rem 1.5rem 1rem;
-        background: rgba(6, 8, 12, 0.95);
-        border-bottom: 1px solid var(--border);
-        gap: 0.25rem;
-      }
-      .nav-links.open { display: flex; }
-      .nav-inner { position: relative; flex-wrap: wrap; }
-      .hero { padding-top: 3rem; }
-    }
-  </style>
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components.css" />
 </head>
 <body>
-
   <div class="ambient">
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
     <div class="grid-bg"></div>
   </div>
 
-  <nav>
-    <div class="wrap nav-inner">
-      <a href="#" class="logo">
-        <div class="logo-icon">L</div>
-        Letter Recon
-      </a>
-      <button class="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">☰</button>
-      <div class="nav-links" id="nav-menu">
-        <a href="#crawl">Crawl</a>
-        <a href="#keywords">Keywords</a>
-        <a href="#sqli">SQLi</a>
-        <a href="#dorks">Dorks</a>
-        <a href="#gui">GUI</a>
-        <a href="#output">Output</a>
-        <a class="nav-cta" href="https://github.com/xadv404/letter/releases/latest">Télécharger</a>
-      </div>
-    </div>
-  </nav>
-
-  <header class="hero">
-    <div class="wrap">
-      <div class="hero-badge">
-        <span class="dot"></span>
-        Windows · GUI native · v1.0.1
-      </div>
-      <h1><span class="gradient">Letter Recon</span></h1>
-      <p class="hero-desc">
-        De la liste de domaines aux Google dorks ciblées — crawl parallèle,
-        extraction intelligente, scoring SQLi et export en un clic.
-      </p>
-      <div class="hero-actions">
-        <a class="btn btn-primary" href="https://github.com/xadv404/letter/releases/latest">
-          ↓ Télécharger letter.exe
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <a href="index.html">
+          <div class="brand-icon">L</div>
+          Letter Recon
         </a>
-        <a class="btn btn-ghost" href="https://github.com/xadv404/letter">GitHub</a>
       </div>
-
-      <div class="pipeline-visual">
-        <div class="pipe-step">
-          <div class="pipe-icon">🌐</div>
-          <strong>Crawl</strong>
-          <small>URLs</small>
+      <nav class="sidebar-nav">
+        <div class="nav-category">
+          <div class="nav-category-label">Général</div>
+          <a href="index.html" class="nav-link"><span class="icon">◉</span> Dashboard</a>
         </div>
-        <span class="pipe-arrow">→</span>
-        <div class="pipe-step">
-          <div class="pipe-icon">🔤</div>
-          <strong>Keywords</strong>
-          <small>H1×5</small>
+        <div class="nav-category">
+          <div class="nav-category-label">Extract</div>
+          <a href="crawl.html" class="nav-link"><span class="icon">🌐</span> Crawl</a>
+          <a href="keywords.html" class="nav-link"><span class="icon">🔤</span> Keywords</a>
+          <a href="sqli.html" class="nav-link"><span class="icon">🎯</span> SQLi</a>
+          <a href="dorks.html" class="nav-link"><span class="icon">🔍</span> Dorks</a>
+          <a href="output.html" class="nav-link"><span class="icon">📁</span> Output</a>
         </div>
-        <span class="pipe-arrow">→</span>
-        <div class="pipe-step">
-          <div class="pipe-icon">🎯</div>
-          <strong>SQLi</strong>
-          <small>Score</small>
+        <div class="nav-category">
+          <div class="nav-category-label">Settings</div>
+          <a href="settings.html" class="nav-link"><span class="icon">⚙️</span> Configuration</a>
         </div>
-        <span class="pipe-arrow">→</span>
-        <div class="pipe-step">
-          <div class="pipe-icon">🔍</div>
-          <strong>Dorks</strong>
-          <small>Export</small>
-        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="https://github.com/xadv404/letter/releases/latest">↓ Télécharger v1.0.1</a>
       </div>
+    </aside>
 
-      <div class="stats">
-        <div class="stat">
-          <div class="stat-value">4</div>
-          <div class="stat-label">Phases</div>
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle" type="button" aria-label="Menu">☰</button>
+          <div>
+            <div class="page-title">Dashboard</div>
+            <div class="page-subtitle">Vue d'ensemble du pipeline</div>
+          </div>
         </div>
-        <div class="stat">
-          <div class="stat-value">1297</div>
-          <div class="stat-label">Stopwords</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value">6453</div>
-          <div class="stat-label">Params SecLists</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value">37+</div>
-          <div class="stat-label">Templates dorks</div>
-        </div>
-      </div>
-    </div>
-  </header>
+        <div class="topbar-badge"><span class="dot"></span> v1.0.1 · Windows</div>
+      </header>
 
-  <main class="wrap">
+      <div class="content">
+        <div class="content-header">
+          <h1>Pipeline de reconnaissance</h1>
+          <p>4 phases automatisées — du crawl aux Google dorks, avec export incrémental et throttling adaptatif.</p>
+        </div>
 
-    <section id="crawl" class="reveal">
-      <div class="section-label">Phase 1</div>
-      <h2>Crawling multi-domaines</h2>
-      <p class="section-desc">Charge des centaines de domaines, suit les liens internes et adapte la vitesse en temps réel.</p>
-      <div class="cat-grid">
-        <div class="cat-card crawl">
-          <div class="cat-header">
-            <div class="cat-icon">📥</div>
-            <h3>Entrée & import</h3>
+        <div class="stats-grid">
+          <div class="stat-card blue">
+            <div class="label">Phases</div>
+            <div class="value">4</div>
+            <div class="hint">Crawl → Keywords → SQLi → Dorks</div>
           </div>
-          <ul>
-            <li>Fichier <code>.txt</code> — un domaine par ligne</li>
-            <li>Import via Browse dans la GUI</li>
-            <li>Pause / reprise sans perte de données</li>
-          </ul>
-        </div>
-        <div class="cat-card crawl">
-          <div class="cat-header">
-            <div class="cat-icon">⚡</div>
-            <h3>Performance</h3>
+          <div class="stat-card cyan">
+            <div class="label">Stopwords</div>
+            <div class="value">1 297</div>
+            <div class="hint">Filtrage anglais embarqué</div>
           </div>
-          <ul>
-            <li>Profondeur 1 – 10 · 10 – 500 pages / domaine</li>
-            <li>Workers parallèles configurables</li>
-            <li>Timeout 5 min par domaine</li>
-          </ul>
-        </div>
-        <div class="cat-card crawl">
-          <div class="cat-header">
-            <div class="cat-icon">🛡️</div>
-            <h3>Throttling adaptatif</h3>
+          <div class="stat-card amber">
+            <div class="label">Params SecLists</div>
+            <div class="value">6 453</div>
+            <div class="hint">Wordlist Burp intégrée</div>
           </div>
-          <ul>
-            <li>Surveillance CPU & RAM en direct</li>
-            <li>NORMAL → CRITICAL (délais ×4)</li>
-            <li>Export incrémental live sur disque</li>
-          </ul>
+          <div class="stat-card violet">
+            <div class="label">Templates dorks</div>
+            <div class="value">37+</div>
+            <div class="hint">Matrix keywords × params</div>
+          </div>
         </div>
-      </div>
-    </section>
 
-    <section id="keywords" class="reveal">
-      <div class="section-label">Phase 2</div>
-      <h2>Extraction intelligente</h2>
-      <p class="section-desc">Mots-clés pondérés par structure HTML, filtrés et enrichis en n-grammes contextuels.</p>
-      <div class="cat-grid">
-        <div class="cat-card keywords">
-          <div class="cat-header">
-            <div class="cat-icon">📊</div>
-            <h3>Pondération</h3>
+        <div class="pipeline">
+          <div class="pipeline-step done">
+            <a href="crawl.html">
+              <div class="step-num">Phase 1</div>
+              <div class="step-name">Crawl</div>
+              <div class="step-meta">URLs multi-domaines</div>
+            </a>
           </div>
-          <ul>
-            <li><code>H1</code> ×5 · <code>H2</code> ×4 · <code>H3</code> ×3</li>
-            <li><code>H4–H6</code> ×2 · <code>P/LI/SPAN</code> ×1</li>
-            <li>Phrases complètes des titres (×2 bonus)</li>
-          </ul>
-        </div>
-        <div class="cat-card keywords">
-          <div class="cat-header">
-            <div class="cat-icon">🧹</div>
-            <h3>Filtrage</h3>
+          <div class="pipeline-step done">
+            <a href="keywords.html">
+              <div class="step-num">Phase 2</div>
+              <div class="step-name">Keywords</div>
+              <div class="step-meta">Extraction H1×5</div>
+            </a>
           </div>
-          <ul>
-            <li>1297 stopwords anglais embarqués</li>
-            <li>300+ termes techniques exclus</li>
-            <li>Longueur 2 – 100 caractères</li>
-          </ul>
-        </div>
-        <div class="cat-card keywords">
-          <div class="cat-header">
-            <div class="cat-icon">🔗</div>
-            <h3>N-grammes</h3>
+          <div class="pipeline-step active">
+            <a href="sqli.html">
+              <div class="step-num">Phase 3</div>
+              <div class="step-name">SQLi</div>
+              <div class="step-meta">Scoring 3 tiers</div>
+            </a>
           </div>
-          <ul>
-            <li>Bigrams & trigrams adjacents</li>
-            <li>Paires croisées dans les headings</li>
-            <li>Max 200 000 keywords / session</li>
-          </ul>
+          <div class="pipeline-step">
+            <a href="dorks.html">
+              <div class="step-num">Phase 4</div>
+              <div class="step-name">Dorks</div>
+              <div class="step-meta">Export personnalisé</div>
+            </a>
+          </div>
         </div>
-      </div>
-      <pre><code>&lt;h1&gt;User Search System&lt;/h1&gt;
-&lt;p&gt;Search by ID or email&lt;/p&gt;
 
-→ "user search system"  (heading, score 10)
-→ "search"              (token, score 5)
-→ "user search"         (bigram)</code></pre>
-    </section>
-
-    <section id="sqli" class="reveal">
-      <div class="section-label">Phase 3</div>
-      <h2>Scoring SQLi</h2>
-      <p class="section-desc">Chaque paramètre URL est noté via regex + wordlist SecLists Burp. Les URLs à risque sont flaggées.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Tier</th>
-              <th>Score</th>
-              <th>Exemples</th>
-              <th>Verdict</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><span class="pill pill-high">HIGH</span></td>
-              <td>≥ 85</td>
-              <td><code>id</code> <code>search_term</code> <code>filter_by</code></td>
-              <td>Accepté · URL flaggée</td>
-            </tr>
-            <tr>
-              <td><span class="pill pill-med">MEDIUM</span></td>
-              <td>65 – 84</td>
-              <td>SecLists match · param inconnu plausible</td>
-              <td>Accepté pour dorks</td>
-            </tr>
-            <tr>
-              <td><span class="pill pill-low">LOW</span></td>
-              <td>50 – 64</td>
-              <td><code>page</code> <code>sort</code> <code>category</code></td>
-              <td>Exclu par défaut</td>
-            </tr>
-            <tr>
-              <td><span class="pill pill-ex">EXCLUDE</span></td>
-              <td>&lt; 50</td>
-              <td><code>utm_source</code> · tokens session</td>
-              <td>Ignoré</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <pre><code>/products?category=electronics&amp;id=42
-
-category  →  LOW (58)   ✗ rejeté
-id        →  HIGH (95)  ✓ targets_*.txt</code></pre>
-    </section>
-
-    <section id="dorks" class="reveal">
-      <div class="section-label">Phase 4</div>
-      <h2>Générateur Google Dorks</h2>
-      <p class="section-desc">Matrix keywords × params HIGH/MEDIUM avec 37+ templates — preview live puis export où vous voulez.</p>
-      <div class="cat-grid">
-        <div class="cat-card dorks">
-          <div class="cat-header">
-            <div class="cat-icon">📐</div>
-            <h3>Templates</h3>
+        <div class="split">
+          <div class="card-grid" style="margin-bottom: 0;">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon emerald">⚡</div>
+                <h3>Throttling adaptatif</h3>
+              </div>
+              <p>Surveillance CPU & RAM en temps réel. Délais ×4 en mode CRITICAL pour protéger la machine.</p>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <div class="card-icon blue">💾</div>
+                <h3>Export incrémental</h3>
+              </div>
+              <p>Écriture live sur disque — aucune perte en cas de pause ou arrêt brutal du crawl.</p>
+            </div>
           </div>
-          <ul>
-            <li><code>inurl</code> + <code>intext</code> combinés</li>
-            <li><code>site:</code> · wildcard TLD · <code>filetype:</code></li>
-            <li>PHP · ASP · JSP · CFM</li>
-          </ul>
-        </div>
-        <div class="cat-card dorks">
-          <div class="cat-header">
-            <div class="cat-icon">✨</div>
-            <h3>Matrix</h3>
+          <div class="activity">
+            <div class="activity-header">Activité type</div>
+            <div class="activity-item">
+              <span class="activity-time">12:04</span>
+              <span class="activity-text"><strong>Crawl</strong> — 142 URLs sur example.com</span>
+            </div>
+            <div class="activity-item">
+              <span class="activity-time">12:05</span>
+              <span class="activity-text"><strong>Keywords</strong> — 89 termes extraits</span>
+            </div>
+            <div class="activity-item">
+              <span class="activity-time">12:06</span>
+              <span class="activity-text"><strong>SQLi</strong> — <code>id</code> HIGH (95) accepté</span>
+            </div>
+            <div class="activity-item">
+              <span class="activity-time">12:07</span>
+              <span class="activity-text"><strong>Dorks</strong> — 312 lignes générées</span>
+            </div>
           </div>
-          <ul>
-            <li>Top 30 keywords × top 20 params</li>
-            <li>Centaines de dorks uniques / domaine</li>
-            <li>Déduplication automatique</li>
-          </ul>
         </div>
-        <div class="cat-card dorks">
-          <div class="cat-header">
-            <div class="cat-icon">💾</div>
-            <h3>Export</h3>
-          </div>
-          <ul>
-            <li>Preview dans la GUI avant export</li>
-            <li>Dialogue « Enregistrer sous » à la fin</li>
-            <li>Choisissez le chemin de <code>dorks.txt</code></li>
-          </ul>
-        </div>
-      </div>
-      <pre><code>inurl:id= intext:admin site:example.com
-inurl:search_term= intext:"user search system"
-site:example.com filetype:php inurl:filter_by=</code></pre>
-    </section>
 
-    <section id="gui" class="reveal">
-      <div class="section-label">Interface</div>
-      <h2>Application Windows</h2>
-      <p class="section-desc">GUI native Fyne — pas de console, contrôle total depuis une seule fenêtre.</p>
-      <div class="cat-grid">
-        <div class="cat-card gui">
-          <div class="cat-header">
-            <div class="cat-icon">🖥️</div>
-            <h3>Dashboard live</h3>
-          </div>
-          <ul>
-            <li>CPU · RAM · throttle en temps réel</li>
-            <li>Progression par domaine</li>
-            <li>Décisions filtre SQLi (accept / reject)</li>
-          </ul>
+        <div class="card-grid">
+          <a href="crawl.html" class="card" style="text-decoration: none; color: inherit;">
+            <div class="card-header">
+              <div class="card-icon blue">🌐</div>
+              <h3>Crawl</h3>
+            </div>
+            <p>Multi-domaines, profondeur configurable, workers parallèles.</p>
+          </a>
+          <a href="keywords.html" class="card" style="text-decoration: none; color: inherit;">
+            <div class="card-header">
+              <div class="card-icon cyan">🔤</div>
+              <h3>Keywords</h3>
+            </div>
+            <p>Pondération HTML, n-grammes, filtrage intelligent.</p>
+          </a>
+          <a href="settings.html" class="card" style="text-decoration: none; color: inherit;">
+            <div class="card-header">
+              <div class="card-icon slate">⚙️</div>
+              <h3>Settings</h3>
+            </div>
+            <p>Depth, pages, workers, score minimum, dossier output.</p>
+          </a>
         </div>
-        <div class="cat-card gui">
-          <div class="cat-header">
-            <div class="cat-icon">🎛️</div>
-            <h3>Contrôles</h3>
-          </div>
-          <ul>
-            <li>Start · Pause · Resume · Stop</li>
-            <li>Sliders depth / pages / workers / score</li>
-            <li>Browse pour fichier domaines</li>
-          </ul>
-        </div>
-        <div class="cat-card gui">
-          <div class="cat-header">
-            <div class="cat-icon">📋</div>
-            <h3>Preview</h3>
-          </div>
-          <ul>
-            <li>Dorks générées en direct (Phase 4)</li>
-            <li>Journal d'activité horodaté</li>
-            <li>Notification fin de pipeline</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <section id="output" class="reveal">
-      <div class="section-label">Fichiers</div>
-      <h2>Sorties</h2>
-      <p class="section-desc">Écriture incrémentale — rien n'attend la fin du crawl. Dorks exportables où vous voulez.</p>
-      <div class="files">
-        <div class="file">
-          <div class="file-phase">Phase 1</div>
-          <div class="file-name">urls_*.txt</div>
-          <div class="file-desc">URLs crawlées</div>
-        </div>
-        <div class="file">
-          <div class="file-phase">Phase 2</div>
-          <div class="file-name">keywords_*.txt</div>
-          <div class="file-desc">Mots-clés pondérés</div>
-        </div>
-        <div class="file">
-          <div class="file-phase">Phase 3</div>
-          <div class="file-name">parameters_*.txt</div>
-          <div class="file-desc">Params scorés</div>
-        </div>
-        <div class="file">
-          <div class="file-phase">Phase 3</div>
-          <div class="file-name">targets_*.txt</div>
-          <div class="file-desc">URLs param HIGH</div>
-        </div>
-        <div class="file">
-          <div class="file-phase">Phase 4</div>
-          <div class="file-name">dorks.txt</div>
-          <div class="file-desc">Google dorks</div>
-        </div>
-        <div class="file">
-          <div class="file-phase">État</div>
-          <div class="file-name">crawl.state.json</div>
-          <div class="file-desc">Pause / reprise</div>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <footer>
-    <div class="wrap">
-      <div class="footer-logo">Letter Recon</div>
-      <p>Usage autorisé uniquement sur des cibles dans votre périmètre légal.</p>
-      <div class="links">
-        <a href="https://github.com/xadv404/letter/releases/latest">Releases</a>
-        <a href="https://github.com/xadv404/letter">Source</a>
       </div>
     </div>
-  </footer>
+  </div>
 
-  <script>
-    (function () {
-      var toggle = document.querySelector(".nav-toggle");
-      var menu = document.getElementById("nav-menu");
-      if (toggle && menu) {
-        toggle.addEventListener("click", function () {
-          var open = menu.classList.toggle("open");
-          toggle.setAttribute("aria-expanded", open ? "true" : "false");
-          toggle.textContent = open ? "✕" : "☰";
-        });
-        menu.querySelectorAll("a").forEach(function (link) {
-          link.addEventListener("click", function () {
-            menu.classList.remove("open");
-            toggle.setAttribute("aria-expanded", "false");
-            toggle.textContent = "☰";
-          });
-        });
-      }
-
-      var reveals = document.querySelectorAll(".reveal");
-      if ("IntersectionObserver" in window) {
-        var observer = new IntersectionObserver(function (entries) {
-          entries.forEach(function (entry) {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("visible");
-              observer.unobserve(entry.target);
-            }
-          });
-        }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
-        reveals.forEach(function (el) { observer.observe(el); });
-      } else {
-        reveals.forEach(function (el) { el.classList.add("visible"); });
-      }
-    })();
-  </script>
-
+  <script src="js/app.js"></script>
 </body>
 </html>

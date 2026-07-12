@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SQLi — Letter Recon</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='100%25' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-family='system-ui' font-weight='800' font-size='16'%3EL%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components.css" />
+</head>
+<body>
+  <div class="ambient"><div class="orb orb-1"></div><div class="orb orb-2"></div><div class="grid-bg"></div></div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand"><a href="index.html"><div class="brand-icon">L</div>Letter Recon</a></div>
+      <nav class="sidebar-nav">
+        <div class="nav-category"><div class="nav-category-label">Général</div><a href="index.html" class="nav-link"><span class="icon">◉</span> Dashboard</a></div>
+        <div class="nav-category">
+          <div class="nav-category-label">Extract</div>
+          <a href="crawl.html" class="nav-link"><span class="icon">🌐</span> Crawl</a>
+          <a href="keywords.html" class="nav-link"><span class="icon">🔤</span> Keywords</a>
+          <a href="sqli.html" class="nav-link"><span class="icon">🎯</span> SQLi</a>
+          <a href="dorks.html" class="nav-link"><span class="icon">🔍</span> Dorks</a>
+          <a href="output.html" class="nav-link"><span class="icon">📁</span> Output</a>
+        </div>
+        <div class="nav-category"><div class="nav-category-label">Settings</div><a href="settings.html" class="nav-link"><span class="icon">⚙️</span> Configuration</a></div>
+      </nav>
+      <div class="sidebar-footer"><a href="https://github.com/xadv404/letter/releases/latest">↓ Télécharger v1.0.1</a></div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-toggle" type="button" aria-label="Menu">☰</button>
+          <div><div class="page-title">SQLi Scoring</div><div class="page-subtitle">Phase 3 · Extract</div></div>
+        </div>
+        <div class="topbar-badge"><span class="dot"></span> Phase 3</div>
+      </header>
+      <div class="content">
+        <div class="content-header">
+          <h1>Scoring SQLi</h1>
+          <p>Chaque paramètre URL est noté via regex + wordlist SecLists Burp. Les URLs à risque sont flaggées.</p>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card blue"><div class="label">Wordlist</div><div class="value">6 453</div><div class="hint">SecLists Burp params</div></div>
+          <div class="stat-card amber"><div class="label">Seuil min</div><div class="value">65</div><div class="hint">MEDIUM par défaut</div></div>
+          <div class="stat-card emerald"><div class="label">HIGH</div><div class="value">≥85</div><div class="hint">URL flaggée</div></div>
+          <div class="stat-card violet"><div class="label">Tiers</div><div class="value">4</div><div class="hint">HIGH → EXCLUDE</div></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Tier</th><th>Score</th><th>Exemples</th><th>Verdict</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="pill pill-high">HIGH</span></td>
+                <td>≥ 85</td>
+                <td><code>id</code> <code>search_term</code> <code>filter_by</code></td>
+                <td>Accepté · URL flaggée</td>
+              </tr>
+              <tr>
+                <td><span class="pill pill-med">MEDIUM</span></td>
+                <td>65 – 84</td>
+                <td>SecLists match · param plausible</td>
+                <td>Accepté pour dorks</td>
+              </tr>
+              <tr>
+                <td><span class="pill pill-low">LOW</span></td>
+                <td>50 – 64</td>
+                <td><code>page</code> <code>sort</code> <code>category</code></td>
+                <td>Exclu par défaut</td>
+              </tr>
+              <tr>
+                <td><span class="pill pill-ex">EXCLUDE</span></td>
+                <td>&lt; 50</td>
+                <td><code>utm_source</code> · tokens session</td>
+                <td>Ignoré</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <pre><code>/products?category=electronics&amp;id=42
+
+category  →  LOW (58)   ✗ rejeté
+id        →  HIGH (95)  ✓ targets_*.txt</code></pre>
+      </div>
+    </div>
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>
