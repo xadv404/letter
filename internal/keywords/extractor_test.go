@@ -136,6 +136,23 @@ func TestHeadingHigherWeightThanParagraph(t *testing.T) {
 	}
 }
 
+func TestExtractFromURLPath(t *testing.T) {
+	e := New(1000)
+	results := e.ExtractFromURL("shop.com", "https://shop.com/catalog/product-detail/inventory.php?id=1")
+	found := map[string]bool{}
+	for _, r := range results {
+		found[r.Keyword] = true
+		if r.Source != "url-path" {
+			t.Fatalf("expected url-path source, got %s for %q", r.Source, r.Keyword)
+		}
+	}
+	for _, want := range []string{"catalog", "product", "inventory"} {
+		if !found[want] {
+			t.Fatalf("expected path keyword %q, got %#v", want, results)
+		}
+	}
+}
+
 func TestTopForDomain(t *testing.T) {
 	e := New(1000)
 	e.Extract("a.com", parseHTML(`<html><body><h1>invoice portal</h1></body></html>`))

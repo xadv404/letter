@@ -1,6 +1,8 @@
 package keywords
 
 import (
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -8,9 +10,13 @@ import (
 	"golang.org/x/net/html"
 )
 
+var pageExtSuffix = regexp.MustCompile(`(?i)\.(php|asp|aspx|jsp|cfm|html?)$`)
+
 var tagWeights = map[string]int{
+	"title": 5,
 	"h1": 5, "h2": 4, "h3": 3,
 	"h4": 2, "h5": 2, "h6": 2,
+	"a": 2,
 	"p": 1, "li": 1, "span": 1,
 }
 
@@ -61,6 +67,44 @@ func (e *Extractor) Extract(domain string, doc *html.Node) []Result {
 		e.processBlock(blk, candidates)
 	}
 
+	return e.commitCandidates(domain, candidates)
+}
+
+// ExtractFromURL scores keywords from a crawled URL path (requires the page to be visited).
+func (e *Extractor) ExtractFromURL(domain, rawURL string) []Result {
+	if e.sessionLen >= e.maxSession {
+		return nil
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil
+	}
+
+	candidates := map[string]candidate{}
+	path := strings.Trim(u.Path, "/")
+	if path == "" {
+		return nil
+	}
+
+	for _, seg := range splitPathSegments(path) {
+		seg = pageExtSuffix.ReplaceAllString(seg, "")
+		if seg == "" || !e.filter.AcceptToken(seg) {
+			continue
+		}
+		mergeCandidate(candidates, seg, 4, "url-path")
+	}
+
+	return e.commitCandidates(domain, candidates)
+}
+
+func splitPathSegments(path string) []string {
+	return strings.FieldsFunc(path, func(r rune) bool {
+		return r == '/' || r == '_' || r == '-' || r == '.'
+	})
+}
+
+func (e *Extractor) commitCandidates(domain string, candidates map[string]candidate) []Result {
 	var results []Result
 	for phrase, cand := range candidates {
 		if !e.filter.AcceptPhrase(phrase) && !e.filter.AcceptToken(phrase) {

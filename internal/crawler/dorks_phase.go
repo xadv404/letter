@@ -24,7 +24,8 @@ func (e *Engine) generateDorks(domains []string) string {
 		}
 
 		if len(keywords) == 0 {
-			keywords = []string{"admin", "user", "search"}
+			e.log("[Phase 4] Aucun keyword depuis le crawl pour " + host + " — ignoré")
+			continue
 		}
 		if len(parameters) == 0 {
 			parameters = []string{"id", "search_term", "filter_by"}

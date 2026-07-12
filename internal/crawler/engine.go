@@ -278,6 +278,10 @@ func (e *Engine) crawlDomain(ctx context.Context, seed string) {
 
 		e.setPhase(2, "Phase 2/4 — Keyword extraction")
 
+		if krs := e.kw.ExtractFromURL(hostKey, rawURL); len(krs) > 0 {
+			e.dashboard.AddKeywords(len(krs))
+		}
+
 		doc, err := html.Parse(strings.NewReader(body))
 		if err == nil {
 			if krs := e.kw.Extract(hostKey, doc); len(krs) > 0 {
