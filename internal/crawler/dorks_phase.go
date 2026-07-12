@@ -74,7 +74,9 @@ func (e *Engine) generateDorks(domains []string) string {
 	}
 
 	materials := dorks.PrepareMaterials(*fp, kwList, phList)
-	assembled := dorks.Assemble(materials)
+	materials.ParamScores = e.buildParamScores(domains)
+	materials.KeywordScores = e.buildKeywordScores()
+	assembled := dorks.RankAssembled(materials)
 
 	if err := e.exporter.WriteMaterials(materials); err != nil {
 		e.log("[Phase 4] Erreur export: " + err.Error())
@@ -82,17 +84,53 @@ func (e *Engine) generateDorks(domains []string) string {
 	}
 
 	e.log(fmt.Sprintf(
-		"[Phase 4] %d dorks auto-assemblés | %d types | %d keywords | %d params",
-		len(assembled), len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params),
+		"[Phase 4] %d dorks notés | ELITE+HIGH: %d | %d types | %d keywords | %d params",
+		len(assembled), countEliteHigh(assembled), len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params),
 	))
 	preview := dorks.PreviewAssembled(materials, 12)
 	e.log(preview)
 	return strings.Join([]string{
-		fmt.Sprintf("dorks.txt: %d requêtes prêtes (types × kw × params)", len(assembled)),
+		fmt.Sprintf("dorks.txt: %d requêtes notées (score | tier | family | dork)", len(assembled)),
 		fmt.Sprintf("dorktypes.txt: %d | keywords.txt: %d | params.txt: %d",
 			len(materials.Types), len(materials.Keywords)+len(materials.Phrases), len(materials.Params)),
 		preview,
 	}, "\n")
+}
+
+func countEliteHigh(ranked []dorks.AssembledDork) int {
+	n := 0
+	for _, d := range ranked {
+		if d.Tier == dorks.TierElite || d.Tier == dorks.TierHigh {
+			n++
+		}
+	}
+	return n
+}
+
+func (e *Engine) buildParamScores(domains []string) map[string]int {
+	out := map[string]int{}
+	for _, domain := range domains {
+		rawHost, _ := dorks.SiteScope(domain)
+		host := NormalizeHost(rawHost)
+		for _, r := range e.scorer.TopInjectableParams(host, 80) {
+			name := strings.ToLower(r.Name)
+			if prev, ok := out[name]; !ok || r.Score > prev {
+				out[name] = r.Score
+			}
+		}
+	}
+	return out
+}
+
+func (e *Engine) buildKeywordScores() map[string]int {
+	out := map[string]int{}
+	for _, r := range e.kw.Top(120) {
+		kw := strings.ToLower(r.Keyword)
+		if prev, ok := out[kw]; !ok || r.Weight > prev {
+			out[kw] = r.Weight
+		}
+	}
+	return out
 }
 
 func uniqueStrings(in []string) []string {

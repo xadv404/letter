@@ -14,12 +14,17 @@ const (
 	MaxPhrasesClone   = 8
 )
 
-// AssembledDork is a ready-to-run Google query.
+// AssembledDork is a ready-to-run Google query with quality rating.
 type AssembledDork struct {
-	Dork   string
-	TypeID string
-	Family string
-	Volume string
+	Dork    string
+	TypeID  string
+	Family  string
+	Volume  string
+	Param   string
+	Keyword string
+	Path    string
+	Score   int
+	Tier    string
 }
 
 // Assemble builds final dorks from materials (types × keywords × params).
@@ -46,7 +51,7 @@ func Assemble(m Materials) []AssembledDork {
 
 	seen := map[string]struct{}{}
 	var out []AssembledDork
-	add := func(dork, typeID, family, volume string) {
+	add := func(dork, typeID, family, volume, param, kw, path string) {
 		dork = strings.TrimSpace(dork)
 		if dork == "" || strings.Contains(dork, "{") {
 			return
@@ -58,7 +63,10 @@ func Assemble(m Materials) []AssembledDork {
 			return
 		}
 		seen[dork] = struct{}{}
-		out = append(out, AssembledDork{Dork: dork, TypeID: typeID, Family: family, Volume: volume})
+		out = append(out, AssembledDork{
+			Dork: dork, TypeID: typeID, Family: family, Volume: volume,
+			Param: param, Keyword: kw, Path: path,
+		})
 	}
 
 	typesByFamily := map[string][]DorkType{}
@@ -69,12 +77,12 @@ func Assemble(m Materials) []AssembledDork {
 	// 1) Volume + error — every injectable param (max URLs).
 	for _, t := range typesByFamily["param_volume"] {
 		for _, pm := range params {
-			add(applySlots(t.Pattern, slotMap(pm, "", "", "")), t.ID, t.Family, t.Volume)
+			add(applySlots(t.Pattern, slotMap(pm, "", "", "")), t.ID, t.Family, t.Volume, pm, "", "")
 		}
 	}
 	for _, t := range typesByFamily["sqli_error"] {
 		for _, pm := range params {
-			add(applySlots(t.Pattern, slotMap(pm, "", "", "")), t.ID, t.Family, t.Volume)
+			add(applySlots(t.Pattern, slotMap(pm, "", "", "")), t.ID, t.Family, t.Volume, pm, "", "")
 		}
 	}
 
@@ -85,7 +93,7 @@ func Assemble(m Materials) []AssembledDork {
 				if strings.Contains(t.Pattern, "{kw}") {
 					continue
 				}
-				add(applySlots(t.Pattern, slotMap(pm, "", path, "")), t.ID, t.Family, t.Volume)
+				add(applySlots(t.Pattern, slotMap(pm, "", path, "")), t.ID, t.Family, t.Volume, pm, "", path)
 			}
 		}
 	}
@@ -94,12 +102,12 @@ func Assemble(m Materials) []AssembledDork {
 	for _, t := range typesByFamily["keyword_match"] {
 		for _, kw := range keywords {
 			for _, pm := range params {
-				add(applySlots(t.Pattern, slotMap(pm, kw, "", "")), t.ID, t.Family, t.Volume)
+				add(applySlots(t.Pattern, slotMap(pm, kw, "", "")), t.ID, t.Family, t.Volume, pm, kw, "")
 			}
 		}
 		for _, ph := range phrases {
 			for _, pm := range params {
-				add(applySlots(t.Pattern, slotMap(pm, ph, "", "")), t.ID, t.Family, t.Volume)
+				add(applySlots(t.Pattern, slotMap(pm, ph, "", "")), t.ID, t.Family, t.Volume, pm, ph, "")
 			}
 		}
 	}
@@ -112,7 +120,7 @@ func Assemble(m Materials) []AssembledDork {
 		for _, path := range paths {
 			for _, kw := range keywords[:cloneKWLimit(len(keywords))] {
 				for _, pm := range params[:cloneParamLimit(len(params))] {
-					add(applySlots(t.Pattern, slotMap(pm, kw, path, "")), t.ID, t.Family, t.Volume)
+					add(applySlots(t.Pattern, slotMap(pm, kw, path, "")), t.ID, t.Family, t.Volume, pm, kw, path)
 				}
 			}
 		}
@@ -122,9 +130,9 @@ func Assemble(m Materials) []AssembledDork {
 	for _, t := range typesByFamily["multi_param"] {
 		for i := 0; i < len(params) && i < 8; i++ {
 			for j := i + 1; j < len(params) && j < i+4; j++ {
-				m := slotMap(params[i], "", "", "")
-				m["param2"] = params[j]
-				add(applySlots(t.Pattern, m), t.ID, t.Family, t.Volume)
+				slots := slotMap(params[i], "", "", "")
+				slots["param2"] = params[j]
+				add(applySlots(t.Pattern, slots), t.ID, t.Family, t.Volume, params[i], "", "")
 			}
 		}
 	}
@@ -176,18 +184,26 @@ func cloneParamLimit(n int) int {
 	return n
 }
 
-// PreviewAssembled summarizes auto-generated dorks.
+// PreviewAssembled summarizes auto-generated dorks with scores.
 func PreviewAssembled(m Materials, limit int) string {
-	dorks := AssembleStrings(m)
-	if limit > 0 && len(dorks) > limit {
-		dorks = dorks[:limit]
+	all := RankAssembled(m)
+	elite, high := 0, 0
+	for _, d := range all {
+		switch d.Tier {
+		case TierElite:
+			elite++
+		case TierHigh:
+			high++
+		}
+	}
+	show := all
+	if limit > 0 && len(show) > limit {
+		show = show[:limit]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Assembled %d dorks (types × keywords × params)\n", len(Assemble(m)))
-	for _, d := range dorks {
-		b.WriteString("  ")
-		b.WriteString(d)
-		b.WriteByte('\n')
+	fmt.Fprintf(&b, "Assembled %d dorks — ELITE: %d | HIGH: %d (scored & sorted)\n", len(all), elite, high)
+	for _, d := range show {
+		b.WriteString(fmt.Sprintf("  [%d %s] %s\n", d.Score, d.Tier, d.Dork))
 	}
 	return b.String()
 }

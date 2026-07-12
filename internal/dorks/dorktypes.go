@@ -23,11 +23,13 @@ type DorkType struct {
 
 // Materials is the crawl output: types + keywords + params (no assembled dorks).
 type Materials struct {
-	Types    []DorkType
-	Keywords []string
-	Phrases  []string
-	Params   []string
-	Paths    []string
+	Types         []DorkType
+	Keywords      []string
+	Phrases       []string
+	Params        []string
+	Paths         []string
+	ParamScores   map[string]int // param name → SQLi score from crawl
+	KeywordScores map[string]int // keyword → extraction weight
 }
 
 // AllDorkTypes returns curated dork type templates (~45 patterns).

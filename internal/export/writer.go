@@ -199,14 +199,14 @@ func (w *Writer) WriteMaterials(m dorks.Materials) error {
 		}
 	}
 
-	assembled := dorks.AssembleStrings(m)
+	assembled := dorks.RankAssembled(m)
 	if !w.dorksHeader {
 		fmt.Fprintf(w.dorksWriter, "# Letter Recon dorks — %s\n", ts())
-		fmt.Fprintf(w.dorksWriter, "# Auto-assembled: dorktypes × keywords × params\n")
+		fmt.Fprintf(w.dorksWriter, "# score | tier | family | dork\n")
 		w.dorksHeader = true
 	}
 	for _, d := range assembled {
-		if _, err := fmt.Fprintln(w.dorksWriter, d); err != nil {
+		if _, err := fmt.Fprintf(w.dorksWriter, "%d | %s | %s | %s\n", d.Score, d.Tier, d.Family, d.Dork); err != nil {
 			return err
 		}
 	}
