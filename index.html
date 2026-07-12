@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Letter Recon — Reconnaissance automatisée</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --surface: #121820;
+      --surface-2: #1a2230;
+      --border: #2a3544;
+      --text: #e8edf4;
+      --muted: #8b9bb0;
+      --accent: #3b82f6;
+      --accent-2: #22d3ee;
+      --high: #ef4444;
+      --medium: #f59e0b;
+      --low: #84cc16;
+      --ok: #10b981;
+      --radius: 14px;
+      --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .hero {
+      padding: 4rem 1.5rem 3rem;
+      text-align: center;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(59, 130, 246, 0.22), transparent),
+        radial-gradient(ellipse 50% 40% at 90% 20%, rgba(34, 211, 238, 0.12), transparent),
+        var(--bg);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #93c5fd;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.75rem;
+    }
+
+    .subtitle {
+      max-width: 680px;
+      margin: 0 auto 1.75rem;
+      color: var(--muted);
+      font-size: 1.1rem;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.25rem;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border: 1px solid transparent;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn:hover { transform: translateY(-1px); text-decoration: none; }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #2563eb);
+      color: white;
+      box-shadow: 0 8px 24px rgba(59, 130, 246, 0.35);
+    }
+
+    .btn-secondary {
+      background: var(--surface-2);
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11, 15, 20, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .nav-inner::-webkit-scrollbar { display: none; }
+
+    .nav-link {
+      white-space: nowrap;
+      padding: 0.45rem 0.85rem;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+
+    .nav-link:hover {
+      background: var(--surface-2);
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 3rem;
+    }
+
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      position: relative;
+    }
+
+    .step-num {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #0b0f14;
+      font-weight: 800;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .step h3 { font-size: 1rem; margin-bottom: 0.35rem; }
+    .step p { font-size: 0.88rem; color: var(--muted); }
+
+    section { margin-bottom: 3rem; scroll-margin-top: 4rem; }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .section-icon {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow);
+    }
+
+    .card h3 {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      color: #cbd5e1;
+    }
+
+    .card p, .card li {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .card ul {
+      margin: 0.5rem 0 0 1.1rem;
+    }
+
+    .card li { margin-bottom: 0.3rem; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: var(--surface-2);
+      color: #cbd5e1;
+      font-weight: 600;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .tag {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .tag-high { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+    .tag-medium { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+    .tag-low { background: rgba(132, 204, 22, 0.15); color: #bef264; }
+    .tag-exclude { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
+
+    pre {
+      background: #0a0e13;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.55;
+      color: #a5f3fc;
+      margin-top: 0.75rem;
+    }
+
+    code {
+      font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    }
+
+    .files-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .file-item {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+    }
+
+    .file-item strong {
+      display: block;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: var(--accent-2);
+      margin-bottom: 0.25rem;
+    }
+
+    .file-item span {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    footer {
+      text-align: center;
+      padding: 2rem 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 600px) {
+      .hero { padding-top: 2.5rem; }
+      main { padding-top: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <span class="badge">Windows · GUI · 4 phases</span>
+    <h1>Letter Recon</h1>
+    <p class="subtitle">
+      Outil de reconnaissance automatisée. Charge des domaines, extrait des mots-clés,
+      score les paramètres SQLi et génère des Google dorks ciblées.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/xadv404/letter/releases/latest">Télécharger letter.exe</a>
+      <a class="btn btn-secondary" href="https://github.com/xadv404/letter">Code source</a>
+    </div>
+  </header>
+
+  <nav>
+    <div class="nav-inner">
+      <a class="nav-link" href="#workflow">Workflow</a>
+      <a class="nav-link" href="#crawl">Crawl</a>
+      <a class="nav-link" href="#keywords">Keywords</a>
+      <a class="nav-link" href="#sqli">SQLi</a>
+      <a class="nav-link" href="#dorks">Dorks</a>
+      <a class="nav-link" href="#gui">Interface</a>
+      <a class="nav-link" href="#output">Sorties</a>
+      <a class="nav-link" href="#config">Config</a>
+    </div>
+  </nav>
+
+  <main>
+
+    <section id="workflow">
+      <div class="section-header">
+        <div class="section-icon">⚡</div>
+        <h2>Workflow 4 phases</h2>
+      </div>
+      <div class="pipeline">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Crawl</h3>
+          <p>Parallèle, profondeur 1–10, timeout 5 min/domaine</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Keywords</h3>
+          <p>Extraction pondérée H1→P, stopwords, n-grammes</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>SQLi score</h3>
+          <p>SecLists 6453 params, 3 tiers, URLs flaggées</p>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <h3>Dorks</h3>
+          <p>Matrix keywords × params, 37+ templates</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="crawl">
+      <div class="section-header">
+        <div class="section-icon">🌐</div>
+        <h2>Crawling multi-domaines</h2>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Entrée</h3>
+          <ul>
+            <li>Fichier <code>.txt</code> — un domaine par ligne</li>
+            <li>Centaines de domaines en parallèle</li>
+            <li>Reprise via <code>crawl.state.json</code></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Contrôles</h3>
+          <ul>
+            <li>Profondeur : 1 – 10 niveaux</li>
+            <li>Limite : 10 – 500 pages / domaine</li>
+            <li>Workers dynamiques + pause / resume</li>
+            <li>Timeout 5 min par domaine</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Stabilité</h3>
+          <ul>
+            <li>Throttling adaptatif CPU / RAM</li>
+            <li>NORMAL → CRITICAL (délais ×4)</li>
+            <li>Export incrémental live sur disque</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="keywords">
+      <div class="section-header">
+        <div class="section-icon">🔤</div>
+        <h2>Extraction intelligente de keywords</h2>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Pondération HTML</h3>
+          <table>
+            <thead>
+              <tr><th>Balise</th><th>Poids</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>H1</td><td>×5</td></tr>
+              <tr><td>H2</td><td>×4</td></tr>
+              <tr><td>H3</td><td>×3</td></tr>
+              <tr><td>H4 – H6</td><td>×2</td></tr>
+              <tr><td>P / LI / SPAN</td><td>×1</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3>Filtres & enrichissement</h3>
+          <ul>
+            <li>1297 stopwords anglais embarqués</li>
+            <li>300+ termes techniques exclus</li>
+            <li>Bigrams / trigrams contextuels</li>
+            <li>Phrases complètes des titres</li>
+            <li>Max 200 000 keywords / session</li>
+            <li>Longueur 2 – 100 caractères</li>
+          </ul>
+        </div>
+      </div>
+      <pre><code>Page : &lt;h1&gt;User Search System&lt;/h1&gt;
+       &lt;p&gt;Search by ID or email&lt;/p&gt;
+
+→ "user search system" (×10 heading)
+→ "search" (×5 token)
+→ "user search" (bigram)</code></pre>
+    </section>
+
+    <section id="sqli">
+      <div class="section-header">
+        <div class="section-icon">🎯</div>
+        <h2>Scoring SQLi des paramètres</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Tier</th>
+            <th>Score</th>
+            <th>Exemples</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag tag-high">HIGH</span></td>
+            <td>≥ 85</td>
+            <td><code>id</code>, <code>search_term</code>, <code>filter_by</code></td>
+            <td>Accepté + URL flaggée</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-medium">MEDIUM</span></td>
+            <td>65 – 84</td>
+            <td>SecLists match, params inconnus plausibles</td>
+            <td>Accepté pour dorks</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-low">LOW</span></td>
+            <td>50 – 64</td>
+            <td><code>page</code>, <code>sort</code>, <code>category</code></td>
+            <td>Exclu par défaut</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-exclude">EXCLUDE</span></td>
+            <td>&lt; 50</td>
+            <td><code>utm_source</code>, <code>sidebar</code>, session tokens</td>
+            <td>Ignoré</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre><code>URL : /products?category=electronics&amp;id=42
+
+category → LOW (58)   → rejeté
+id       → HIGH (95)  → accepté, URL dans targets_*.txt</code></pre>
+    </section>
+
+    <section id="dorks">
+      <div class="section-header">
+        <div class="section-icon">🔍</div>
+        <h2>Générateur Google Dorks</h2>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Templates (37+)</h3>
+          <ul>
+            <li><code>inurl</code> + <code>intext</code></li>
+            <li><code>site:</code> + wildcard TLD</li>
+            <li><code>filetype:php/asp/jsp/cfm</code></li>
+            <li>Chemins : admin, login, api, search…</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Matrix</h3>
+          <p>Top 30 keywords × top 20 params HIGH/MEDIUM = centaines de dorks uniques par domaine.</p>
+        </div>
+      </div>
+      <pre><code>inurl:id= intext:admin site:example.com
+inurl:search_term= intext:"user search system"
+site:example.com filetype:php inurl:filter_by=</code></pre>
+    </section>
+
+    <section id="gui">
+      <div class="section-header">
+        <div class="section-icon">🖥️</div>
+        <h2>Interface Windows</h2>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Panneaux</h3>
+          <ul>
+            <li>Configuration (depth, pages, workers, score)</li>
+            <li>Progression par domaine</li>
+            <li>CPU / RAM / throttle live</li>
+            <li>Décisions filtre SQLi (accept/reject)</li>
+            <li>Preview dorks Phase 4</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Contrôles</h3>
+          <ul>
+            <li>Start · Pause · Resume · Stop</li>
+            <li>Import domaines via Browse</li>
+            <li>Pas de console — GUI native Fyne</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="output">
+      <div class="section-header">
+        <div class="section-icon">📁</div>
+        <h2>Fichiers de sortie</h2>
+      </div>
+      <p style="color: var(--muted); margin-bottom: 1rem;">Écriture incrémentale dans <code>./output/</code> à côté de <code>letter.exe</code></p>
+      <div class="files-grid">
+        <div class="file-item">
+          <strong>urls_*.txt</strong>
+          <span>Phase 1 — URLs crawlées</span>
+        </div>
+        <div class="file-item">
+          <strong>keywords_*.txt</strong>
+          <span>Phase 2 — Mots-clés pondérés</span>
+        </div>
+        <div class="file-item">
+          <strong>parameters_*.txt</strong>
+          <span>Phase 3 — Params scorés par URL</span>
+        </div>
+        <div class="file-item">
+          <strong>targets_*.txt</strong>
+          <span>Phase 3 — URLs avec param HIGH</span>
+        </div>
+        <div class="file-item">
+          <strong>dorks.txt</strong>
+          <span>Phase 4 — Google dorks finales</span>
+        </div>
+        <div class="file-item">
+          <strong>crawl.state.json</strong>
+          <span>État pause / reprise</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="config">
+      <div class="section-header">
+        <div class="section-icon">⚙️</div>
+        <h2>Configuration par défaut</h2>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Paramètre</th><th>Valeur</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Profondeur</td><td>3 (1 – 10)</td></tr>
+          <tr><td>Pages / domaine</td><td>100 (10 – 500)</td></tr>
+          <tr><td>Workers</td><td>8</td></tr>
+          <tr><td>Délai base</td><td>250 ms</td></tr>
+          <tr><td>Timeout domaine</td><td>5 minutes</td></tr>
+          <tr><td>Score min param</td><td>65 (MEDIUM+)</td></tr>
+          <tr><td>Max keywords</td><td>200 000</td></tr>
+          <tr><td>Max paramètres</td><td>100 000</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Letter Recon — usage autorisé uniquement sur des cibles dans votre périmètre légal.</p>
+    <p style="margin-top: 0.5rem;">
+      <a href="https://github.com/xadv404/letter/releases">Releases</a> ·
+      <a href="https://github.com/xadv404/letter">GitHub</a>
+    </p>
+  </footer>
+
+</body>
+</html>
